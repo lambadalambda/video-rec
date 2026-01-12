@@ -25,11 +25,34 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/video_suggestion"
 import topbar from "../vendor/topbar"
 
+const VideoFeed = {
+  mounted() {
+    this.observer = new IntersectionObserver(
+      entries => {
+        for (const entry of entries) {
+          const video = entry.target
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.75) {
+            video.play().catch(() => {})
+          } else {
+            video.pause()
+          }
+        }
+      },
+      {threshold: [0, 0.75, 1]},
+    )
+
+    this.el.querySelectorAll("video[data-feed-video]").forEach(video => this.observer.observe(video))
+  },
+  destroyed() {
+    this.observer?.disconnect()
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: {...colocatedHooks, VideoFeed},
 })
 
 // Show progress bar on live navigation and form submits
@@ -80,4 +103,3 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
-

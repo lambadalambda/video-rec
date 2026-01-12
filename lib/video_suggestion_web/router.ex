@@ -19,8 +19,18 @@ defmodule VideoSuggestionWeb.Router do
 
   scope "/", VideoSuggestionWeb do
     pipe_through :browser
+  end
 
-    get "/", PageController, :home
+  scope "/admin", VideoSuggestionWeb do
+    pipe_through [:browser, :require_authenticated_user]
+
+    live_session :require_admin_user,
+      on_mount: [
+        {VideoSuggestionWeb.UserAuth, :require_authenticated},
+        {VideoSuggestionWeb.UserAuth, :require_admin}
+      ] do
+      live "/videos/new", Admin.VideoUploadLive, :new
+    end
   end
 
   # Other scopes may use custom stacks.
@@ -64,6 +74,7 @@ defmodule VideoSuggestionWeb.Router do
 
     live_session :current_user,
       on_mount: [{VideoSuggestionWeb.UserAuth, :mount_current_scope}] do
+      live "/", FeedLive, :index
       live "/users/register", UserLive.Registration, :new
       live "/users/log-in", UserLive.Login, :new
       live "/users/log-in/:token", UserLive.Confirmation, :new

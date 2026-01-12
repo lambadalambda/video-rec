@@ -37,32 +37,60 @@ defmodule VideoSuggestionWeb.Layouts do
     ~H"""
     <header class="navbar px-4 sm:px-6 lg:px-8">
       <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
-        </a>
+        <.link navigate={~p"/"} class="flex w-fit items-center gap-2">
+          <img src={~p"/images/logo.svg"} width="36" alt="VideoSuggestion" />
+          <span class="text-sm font-semibold">VideoSuggestion</span>
+        </.link>
       </div>
+
       <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
-          </li>
+        <ul class="flex items-center gap-2">
           <li>
             <.theme_toggle />
           </li>
-          <li>
-            <a href="https://hexdocs.pm/phoenix/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
-          </li>
+
+          <%= if @current_scope && @current_scope.user do %>
+            <%= if @current_scope.user.is_admin do %>
+              <li>
+                <.link navigate={~p"/admin/videos/new"} class="btn btn-ghost btn-sm">
+                  Upload
+                </.link>
+              </li>
+            <% end %>
+
+            <li class="hidden sm:block text-xs opacity-70">
+              {@current_scope.user.email}
+            </li>
+
+            <li>
+              <.link navigate={~p"/users/settings"} class="btn btn-ghost btn-sm">
+                Settings
+              </.link>
+            </li>
+
+            <li>
+              <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-sm">
+                Log out
+              </.link>
+            </li>
+          <% else %>
+            <li>
+              <.link navigate={~p"/users/register"} class="btn btn-ghost btn-sm">
+                Register
+              </.link>
+            </li>
+
+            <li>
+              <.link navigate={~p"/users/log-in"} class="btn btn-primary btn-sm">
+                Log in
+              </.link>
+            </li>
+          <% end %>
         </ul>
       </div>
     </header>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
+    <main class="px-4 py-6 sm:px-6 lg:px-8">
       <div class="mx-auto max-w-2xl space-y-4">
         {render_slot(@inner_block)}
       </div>
