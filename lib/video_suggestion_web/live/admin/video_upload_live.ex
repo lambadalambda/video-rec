@@ -25,7 +25,7 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
       <div class="space-y-6">
         <.header>Upload video</.header>
 
-        <.form for={@form} id="video_upload_form" phx-submit="save" multipart>
+        <.form for={@form} id="video_upload_form" phx-submit="save" phx-change="validate" multipart>
           <.input field={@form[:caption]} type="text" label="Caption" />
 
           <label class="form-control w-full">
@@ -42,6 +42,11 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
       </div>
     </Layouts.app>
     """
+  end
+
+  @impl true
+  def handle_event("validate", _params, socket) do
+    {:noreply, socket}
   end
 
   @impl true

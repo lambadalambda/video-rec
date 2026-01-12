@@ -14,6 +14,7 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLiveTest do
     {:ok, _view, html} = live(log_in_user(conn, admin), "/admin/videos/new")
     assert html =~ "Upload video"
     assert html =~ ~s(enctype="multipart/form-data")
+    assert html =~ ~s(phx-change="validate")
   end
 
   test "non-admin cannot access the upload page", %{conn: conn} do
