@@ -73,6 +73,11 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# Allow iPhone/QuickTime-style .m4v uploads.
+config :mime, :types, %{
+  "video/mp4" => ["mp4", "m4v"]
+}
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

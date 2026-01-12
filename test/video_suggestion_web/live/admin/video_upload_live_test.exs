@@ -86,4 +86,21 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLiveTest do
     on_exit(fn -> File.rm_rf(Uploads.path(video.storage_key)) end)
   end
 
+  test "upload shows a helpful error when the file type is not accepted", %{conn: conn} do
+    admin = user_fixture()
+    assert admin.is_admin
+
+    {:ok, lv, _html} = live(log_in_user(conn, admin), "/admin/videos/new")
+
+    upload =
+      file_input(lv, "#video_upload_form", :video, [
+        %{name: "sample.txt", content: "hello", type: "text/plain"}
+      ])
+
+    assert {:error, [[_ref, :not_accepted]]} = render_upload(upload, "sample.txt")
+
+    html = render(lv)
+    assert html =~ "unacceptable file type"
+  end
+
 end

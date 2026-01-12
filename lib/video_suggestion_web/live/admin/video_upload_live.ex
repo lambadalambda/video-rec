@@ -10,12 +10,12 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
       socket
       |> assign(form: to_form(%{}, as: "video"))
       |> allow_upload(:video,
-        accept: ~w(.mp4 .mov .webm),
+        accept: ~w(.mp4 .m4v .mov .webm),
         max_entries: 1,
         max_file_size: 200_000_000
       )
 
-    {:ok, socket, temporary_assigns: [form: nil]}
+    {:ok, socket}
   end
 
   @impl true
@@ -35,7 +35,45 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
             <.live_file_input upload={@uploads.video} class="file-input file-input-bordered w-full" />
           </label>
 
-          <.button phx-disable-with="Uploading..." class="btn btn-primary w-full">
+          <section phx-drop-target={@uploads.video.ref} class="space-y-2">
+            <article :for={entry <- @uploads.video.entries} class="card bg-base-200 p-3 space-y-2">
+              <div class="flex items-center justify-between gap-3">
+                <div class="text-sm truncate">{entry.client_name}</div>
+
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-xs"
+                  phx-click="cancel-upload"
+                  phx-value-ref={entry.ref}
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <progress value={entry.progress} max="100" class="progress progress-primary w-full">
+                {entry.progress}%
+              </progress>
+
+              <p :for={err <- upload_errors(@uploads.video, entry)} class="text-error text-xs">
+                {error_to_string(err)}
+              </p>
+            </article>
+
+            <p :for={err <- upload_errors(@uploads.video)} class="text-error text-xs">
+              {error_to_string(err)}
+            </p>
+          </section>
+
+          <.button
+            phx-disable-with="Uploading..."
+            class="btn btn-primary w-full"
+            disabled={
+              Enum.empty?(@uploads.video.entries) or
+                Enum.any?(@uploads.video.entries, &(&1.progress < 100)) or
+                upload_errors(@uploads.video) != [] or
+                Enum.any?(@uploads.video.entries, fn entry -> upload_errors(@uploads.video, entry) != [] end)
+            }
+          >
             Upload
           </.button>
         </.form>
@@ -47,6 +85,11 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
   @impl true
   def handle_event("validate", _params, socket) do
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("cancel-upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :video, ref)}
   end
 
   @impl true
@@ -110,4 +153,8 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
         end
     end
   end
+
+  defp error_to_string(:too_large), do: "File too large"
+  defp error_to_string(:too_many_files), do: "Too many files"
+  defp error_to_string(:not_accepted), do: "You have selected an unacceptable file type"
 end
