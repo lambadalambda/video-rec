@@ -72,7 +72,9 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
               Enum.empty?(@uploads.video.entries) or
                 Enum.any?(@uploads.video.entries, &(&1.progress < 100)) or
                 upload_errors(@uploads.video) != [] or
-                Enum.any?(@uploads.video.entries, fn entry -> upload_errors(@uploads.video, entry) != [] end)
+                Enum.any?(@uploads.video.entries, fn entry ->
+                  upload_errors(@uploads.video, entry) != []
+                end)
             }
           >
             Upload
@@ -102,7 +104,8 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
 
     cond do
       in_progress != [] ->
-        {:noreply, put_flash(socket, :error, "Upload still in progress. Please wait for it to finish.")}
+        {:noreply,
+         put_flash(socket, :error, "Upload still in progress. Please wait for it to finish.")}
 
       completed == [] ->
         {:noreply, put_flash(socket, :error, "Please choose a video file to upload.")}
@@ -146,7 +149,8 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
                  |> push_navigate(to: ~p"/")}
 
               {:error, %Ecto.Changeset{} = changeset} ->
-                {:noreply, put_flash(socket, :error, "Upload failed: #{inspect(changeset.errors)}")}
+                {:noreply,
+                 put_flash(socket, :error, "Upload failed: #{inspect(changeset.errors)}")}
             end
 
           [] ->

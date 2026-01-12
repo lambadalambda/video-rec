@@ -103,5 +103,4 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLiveTest do
     html = render(lv)
     assert html =~ "unacceptable file type"
   end
-
 end
