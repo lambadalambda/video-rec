@@ -27,24 +27,118 @@ import topbar from "../vendor/topbar"
 
 const VideoFeed = {
   mounted() {
+    this.feedItems = Array.from(this.el.querySelectorAll("[data-feed-item]"))
+    this.videos = this.feedItems
+      .map(item => item.querySelector("video[data-feed-video]"))
+      .filter(Boolean)
+
+    this.activeIndex = 0
+
+    this.prevButton = this.el.querySelector("[data-feed-prev]")
+    this.nextButton = this.el.querySelector("[data-feed-next]")
+
+    this.onPrev = e => {
+      e.preventDefault()
+      this.scrollBy(-1)
+    }
+
+    this.onNext = e => {
+      e.preventDefault()
+      this.scrollBy(1)
+    }
+
+    this.onKeyDown = e => {
+      if (e.defaultPrevented) return
+
+      if (e.target && ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return
+
+      if (e.key === "ArrowDown" || e.key === "PageDown") {
+        e.preventDefault()
+        this.scrollBy(1)
+      } else if (e.key === "ArrowUp" || e.key === "PageUp") {
+        e.preventDefault()
+        this.scrollBy(-1)
+      }
+    }
+
+    this.onVideoClick = e => {
+      const video = e.currentTarget
+      if (video.paused) {
+        video.play().catch(() => {})
+      } else {
+        video.pause()
+      }
+    }
+
     this.observer = new IntersectionObserver(
       entries => {
         for (const entry of entries) {
           const video = entry.target
           if (entry.isIntersecting && entry.intersectionRatio >= 0.75) {
-            video.play().catch(() => {})
+            this.setActiveVideo(video)
           } else {
             video.pause()
           }
         }
       },
-      {threshold: [0, 0.75, 1]},
+      {root: this.el, threshold: [0, 0.75, 1]},
     )
 
-    this.el.querySelectorAll("video[data-feed-video]").forEach(video => this.observer.observe(video))
+    this.videos.forEach(video => {
+      this.observer.observe(video)
+      video.addEventListener("click", this.onVideoClick)
+    })
+
+    this.prevButton?.addEventListener("click", this.onPrev)
+    this.nextButton?.addEventListener("click", this.onNext)
+    window.addEventListener("keydown", this.onKeyDown)
+  },
+
+  scrollBy(delta) {
+    const nextIndex = this.clampIndex(this.activeIndex + delta)
+    this.scrollToIndex(nextIndex)
+  },
+
+  scrollToIndex(index) {
+    const item = this.feedItems[index]
+    if (!item) return
+
+    item.scrollIntoView({behavior: "smooth", block: "start", inline: "nearest"})
+  },
+
+  clampIndex(index) {
+    return Math.min(this.feedItems.length - 1, Math.max(0, index))
+  },
+
+  setActiveVideo(video) {
+    const item = video.closest("[data-feed-item]")
+    const index = item ? this.feedItems.indexOf(item) : -1
+    if (index >= 0) this.activeIndex = index
+
+    video.play().catch(() => {})
+
+    this.preloadIndex(this.activeIndex + 1)
+    this.preloadIndex(this.activeIndex - 1)
+  },
+
+  preloadIndex(index) {
+    if (index < 0 || index >= this.feedItems.length) return
+
+    const item = this.feedItems[index]
+    const video = item?.querySelector("video[data-feed-video]")
+    if (!video || video.dataset.preloaded === "true") return
+
+    video.dataset.preloaded = "true"
+    video.preload = "auto"
+    video.load()
   },
   destroyed() {
     this.observer?.disconnect()
+
+    this.videos?.forEach(video => video.removeEventListener("click", this.onVideoClick))
+    this.prevButton?.removeEventListener("click", this.onPrev)
+    this.nextButton?.removeEventListener("click", this.onNext)
+    window.removeEventListener("keydown", this.onKeyDown)
   },
 }
 

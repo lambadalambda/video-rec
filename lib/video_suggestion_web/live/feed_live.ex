@@ -41,8 +41,31 @@ defmodule VideoSuggestionWeb.FeedLive do
         </div>
       <% else %>
         <div id="feed" phx-hook="VideoFeed" class="h-dvh overflow-y-scroll snap-y snap-mandatory">
+          <div class="pointer-events-none fixed inset-y-0 right-0 z-20 hidden sm:flex flex-col justify-center gap-2 p-3">
+            <button
+              type="button"
+              data-feed-prev
+              aria-label="Previous video"
+              class="pointer-events-auto btn btn-circle btn-ghost btn-sm"
+            >
+              <.icon name="hero-chevron-up" class="size-5" />
+            </button>
+
+            <button
+              type="button"
+              data-feed-next
+              aria-label="Next video"
+              class="pointer-events-auto btn btn-circle btn-ghost btn-sm"
+            >
+              <.icon name="hero-chevron-down" class="size-5" />
+            </button>
+          </div>
+
           <%= for video <- @videos do %>
-            <div class="h-dvh snap-start relative flex items-center justify-center bg-black">
+            <div
+              data-feed-item
+              class="h-dvh snap-start relative flex items-center justify-center bg-black"
+            >
               <video
                 data-feed-video
                 class="h-full w-full object-contain"
