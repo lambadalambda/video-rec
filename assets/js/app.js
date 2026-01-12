@@ -27,17 +27,12 @@ import topbar from "../vendor/topbar"
 
 const VideoFeed = {
   mounted() {
-    this.feedItems = Array.from(this.el.querySelectorAll("[data-feed-item]"))
-    this.videos = this.feedItems
-      .map(item => item.querySelector("video[data-feed-video]"))
-      .filter(Boolean)
-
-    this.wrapEnabled =
-      this.feedItems.length > 2 &&
-      this.feedItems[0]?.dataset.feedClone === "prev" &&
-      this.feedItems[this.feedItems.length - 1]?.dataset.feedClone === "next"
-
-    this.activeIndex = this.wrapEnabled ? 1 : 0
+    this.feedItems = []
+    this.videos = []
+    this.activeIndex = 0
+    this.activeVideoEl = null
+    this.loadingMore = false
+    this.observedVideos = new Set()
 
     this.prevButton = this.el.querySelector("[data-feed-prev]")
     this.nextButton = this.el.querySelector("[data-feed-next]")
@@ -103,10 +98,6 @@ const VideoFeed = {
       }
     }
 
-    if (this.wrapEnabled) {
-      this.scrollToIndex(1, "auto")
-    }
-
     this.observer = new IntersectionObserver(
       entries => {
         for (const entry of entries) {
@@ -122,15 +113,79 @@ const VideoFeed = {
       {root: this.el, threshold: [0, 0.75, 1]},
     )
 
-    this.videos.forEach(video => {
-      this.observer.observe(video)
-    })
+    this.syncElements()
+    this.observeVideos()
+
+    if (this.hasPrevClone) {
+      this.activeIndex = this.firstRealIndex
+      this.scrollToIndex(this.firstRealIndex, "auto")
+    }
 
     this.prevButton?.addEventListener("click", this.onPrev)
     this.nextButton?.addEventListener("click", this.onNext)
     this.playToggle?.addEventListener("click", this.onPlayToggle)
     this.soundToggle?.addEventListener("click", this.onSoundToggle)
     window.addEventListener("keydown", this.onKeyDown)
+  },
+
+  updated() {
+    const previousActiveVideoEl = this.activeVideoEl
+    const previousActiveIndex = this.activeIndex
+
+    this.syncElements()
+    this.observeVideos()
+
+    if (previousActiveVideoEl) {
+      const item = previousActiveVideoEl.closest("[data-feed-item]")
+      const index = item ? this.feedItems.indexOf(item) : -1
+
+      if (index >= 0) {
+        this.activeIndex = index
+      } else {
+        this.activeIndex = this.clampIndex(previousActiveIndex)
+      }
+    } else {
+      this.activeIndex = this.clampIndex(previousActiveIndex)
+    }
+
+    this.applySoundToActiveVideo()
+    this.maybeRequestMore()
+  },
+
+  syncElements() {
+    this.feedItems = Array.from(this.el.querySelectorAll("[data-feed-item]"))
+    this.videos = this.feedItems
+      .map(item => item.querySelector("video[data-feed-video]"))
+      .filter(Boolean)
+
+    this.hasPrevClone = this.feedItems[0]?.dataset.feedClone === "prev"
+    this.hasNextClone = this.feedItems[this.feedItems.length - 1]?.dataset.feedClone === "next"
+
+    this.firstRealIndex = this.hasPrevClone ? 1 : 0
+    this.lastRealIndex = this.hasNextClone ? this.feedItems.length - 2 : this.feedItems.length - 1
+  },
+
+  observeVideos() {
+    this.videos.forEach(video => {
+      if (!this.observedVideos.has(video)) {
+        this.observedVideos.add(video)
+        this.observer.observe(video)
+      }
+    })
+  },
+
+  hasMore() {
+    return this.el.dataset.feedHasMore === "true"
+  },
+
+  maybeRequestMore() {
+    if (!this.hasMore()) return
+    if (this.loadingMore) return
+    if (this.activeIndex < this.lastRealIndex - 1) return
+
+    this.loadingMore = true
+    this.pushEvent("load-more", {})
+    window.setTimeout(() => this.loadingMore = false, 500)
   },
 
   scrollBy(delta) {
@@ -155,8 +210,19 @@ const VideoFeed = {
     if (index < 0) return
 
     const clone = item.dataset.feedClone
-    if (this.wrapEnabled && clone) {
-      const targetIndex = clone === "prev" ? this.feedItems.length - 2 : 1
+    if (clone === "prev") {
+      const targetIndex = this.lastRealIndex
+      this.userPaused = false
+      this.updatePlayUI()
+      this.activeIndex = targetIndex
+      video.pause()
+      video.muted = true
+      this.scrollToIndex(targetIndex, "auto")
+      return
+    }
+
+    if (clone === "next") {
+      const targetIndex = this.firstRealIndex
       this.userPaused = false
       this.updatePlayUI()
       this.activeIndex = targetIndex
@@ -168,6 +234,7 @@ const VideoFeed = {
 
     const changed = index !== this.activeIndex
     this.activeIndex = index
+    this.activeVideoEl = video
     if (changed) {
       this.userPaused = false
       this.updatePlayUI()
@@ -180,6 +247,7 @@ const VideoFeed = {
 
     this.preloadIndex(this.activeIndex + 1)
     this.preloadIndex(this.activeIndex - 1)
+    this.maybeRequestMore()
   },
 
   applySoundToVideo(video) {

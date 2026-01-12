@@ -12,6 +12,7 @@ defmodule VideoSuggestion.Videos do
   def list_videos(opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
     current_user_id = Keyword.get(opts, :current_user_id)
+    before = Keyword.get(opts, :before)
 
     query =
       from v in Video,
@@ -21,6 +22,19 @@ defmodule VideoSuggestion.Videos do
         order_by: [desc: v.inserted_at, desc: v.id],
         limit: ^limit,
         select_merge: %{favorites_count: count(f.id)}
+
+    query =
+      case before do
+        {before_inserted_at, before_id}
+        when not is_nil(before_inserted_at) and is_integer(before_id) ->
+          from v in query,
+            where:
+              v.inserted_at < ^before_inserted_at or
+                (v.inserted_at == ^before_inserted_at and v.id < ^before_id)
+
+        _ ->
+          query
+      end
 
     query =
       if is_integer(current_user_id) do

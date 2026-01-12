@@ -17,5 +17,6 @@ Goal: ship a working, mobile-first site before recommendation logic.
   - [x] Hide feed scrollbars
   - [x] Favorite button + favorites count
   - [x] Sound toggle (persists + switches with active video)
+  - [x] Load more videos as you scroll (no fixed feed limit)
   - [x] Endless feed wrap-around
 - [x] Basic access control + smoke tests

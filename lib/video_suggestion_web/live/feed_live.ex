@@ -3,6 +3,8 @@ defmodule VideoSuggestionWeb.FeedLive do
 
   alias VideoSuggestion.Videos
 
+  @page_size 50
+
   @impl true
   def mount(_params, _session, socket) do
     current_user_id =
@@ -11,7 +13,16 @@ defmodule VideoSuggestionWeb.FeedLive do
         _ -> nil
       end
 
-    {:ok, assign(socket, videos: Videos.list_videos(current_user_id: current_user_id))}
+    {videos, has_more} =
+      Videos.list_videos(limit: @page_size + 1, current_user_id: current_user_id)
+      |> take_page(@page_size)
+
+    {:ok,
+     assign(socket,
+       videos: videos,
+       has_more: has_more,
+       current_user_id: current_user_id
+     )}
   end
 
   @impl true
@@ -49,6 +60,7 @@ defmodule VideoSuggestionWeb.FeedLive do
         <div
           id="feed"
           phx-hook="VideoFeed"
+          data-feed-has-more={to_string(@has_more)}
           class="h-dvh overflow-y-scroll snap-y snap-mandatory no-scrollbar"
         >
           <div class="pointer-events-none fixed inset-y-0 right-0 z-20 hidden sm:flex flex-col justify-center gap-2 p-3">
@@ -109,7 +121,7 @@ defmodule VideoSuggestionWeb.FeedLive do
             <.feed_item video={video} current_scope={@current_scope} />
           <% end %>
 
-          <%= if length(@videos) > 1 do %>
+          <%= if not @has_more and length(@videos) > 1 do %>
             <.feed_item video={hd(@videos)} current_scope={@current_scope} clone="next" />
           <% end %>
         </div>
@@ -205,5 +217,37 @@ defmodule VideoSuggestionWeb.FeedLive do
       _ ->
         {:noreply, push_navigate(socket, to: ~p"/users/log-in")}
     end
+  end
+
+  @impl true
+  def handle_event("load-more", _params, socket) do
+    cond do
+      socket.assigns.has_more == false ->
+        {:noreply, socket}
+
+      socket.assigns.videos == [] ->
+        {:noreply, assign(socket, has_more: false)}
+
+      true ->
+        last_video = List.last(socket.assigns.videos)
+
+        {more, has_more} =
+          Videos.list_videos(
+            limit: @page_size + 1,
+            current_user_id: socket.assigns.current_user_id,
+            before: {last_video.inserted_at, last_video.id}
+          )
+          |> take_page(@page_size)
+
+        {:noreply,
+         socket
+         |> assign(:videos, socket.assigns.videos ++ more)
+         |> assign(:has_more, has_more)}
+    end
+  end
+
+  defp take_page(videos, page_size) when is_list(videos) and is_integer(page_size) do
+    {page, rest} = Enum.split(videos, page_size)
+    {page, rest != []}
   end
 end
