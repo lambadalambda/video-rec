@@ -12,4 +12,7 @@ Goal: ship a working, mobile-first site before recommendation logic.
   - [x] Desktop next/prev controls + arrow keys
   - [x] Preload adjacent videos
   - [x] Hide feed scrollbars
+  - [x] Favorite button + favorites count
+  - [x] Sound toggle (persists + switches with active video)
+  - [x] Endless feed wrap-around
 - [x] Basic access control + smoke tests
