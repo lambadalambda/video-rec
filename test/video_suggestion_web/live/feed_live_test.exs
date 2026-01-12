@@ -32,4 +32,39 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
     refute html =~ "object-cover"
     refute html =~ ~s( controls)
   end
+
+  test "signed-in user can favorite and unfavorite a video", %{conn: conn} do
+    user = user_fixture()
+
+    {:ok, video} =
+      Videos.create_video(%{
+        user_id: user.id,
+        storage_key: "#{System.unique_integer([:positive])}.mp4",
+        caption: "hello",
+        original_filename: "sample.mp4",
+        content_type: "video/mp4"
+      })
+
+    {:ok, lv, _html} = live(log_in_user(conn, user), "/")
+
+    assert lv
+           |> element(~s([data-favorites-count][data-video-id="#{video.id}"]))
+           |> render() =~ ~r/>\s*0\s*</
+
+    lv
+    |> element(~s([data-favorite-button][data-video-id="#{video.id}"]))
+    |> render_click()
+
+    assert Videos.favorites_count(video.id) == 1
+
+    assert lv
+           |> element(~s([data-favorites-count][data-video-id="#{video.id}"]))
+           |> render() =~ ~r/>\s*1\s*</
+
+    lv
+    |> element(~s([data-favorite-button][data-video-id="#{video.id}"]))
+    |> render_click()
+
+    assert Videos.favorites_count(video.id) == 0
+  end
 end

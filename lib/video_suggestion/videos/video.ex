@@ -6,8 +6,12 @@ defmodule VideoSuggestion.Videos.Video do
   schema "videos" do
     field :caption, :string
     field :content_type, :string
+    field :favorited, :boolean, virtual: true, default: false
+    field :favorites_count, :integer, virtual: true, default: 0
     field :original_filename, :string
     field :storage_key, :string
+
+    has_many :favorites, VideoSuggestion.Videos.Favorite
 
     belongs_to :user, VideoSuggestion.Accounts.User
 

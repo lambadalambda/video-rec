@@ -5,7 +5,13 @@ defmodule VideoSuggestionWeb.FeedLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, videos: Videos.list_videos())}
+    current_user_id =
+      case socket.assigns.current_scope do
+        %{user: %{id: id}} -> id
+        _ -> nil
+      end
+
+    {:ok, assign(socket, videos: Videos.list_videos(current_user_id: current_user_id))}
   end
 
   @impl true
@@ -81,6 +87,41 @@ defmodule VideoSuggestionWeb.FeedLive do
               >
               </video>
 
+              <div class="pointer-events-none absolute inset-0">
+                <div class="pointer-events-auto absolute right-3 bottom-24 flex flex-col items-center gap-1">
+                  <%= if @current_scope && @current_scope.user do %>
+                    <button
+                      type="button"
+                      data-favorite-button
+                      data-video-id={video.id}
+                      phx-click="toggle-favorite"
+                      phx-value-id={video.id}
+                      aria-label="Favorite"
+                      class="btn btn-circle btn-ghost btn-sm"
+                    >
+                      <.icon
+                        name={if video.favorited, do: "hero-heart-solid", else: "hero-heart"}
+                        class={["size-6", video.favorited && "text-error"]}
+                      />
+                    </button>
+                  <% else %>
+                    <.link
+                      navigate={~p"/users/log-in"}
+                      data-favorite-button
+                      data-video-id={video.id}
+                      aria-label="Log in to favorite"
+                      class="btn btn-circle btn-ghost btn-sm"
+                    >
+                      <.icon name="hero-heart" class="size-6" />
+                    </.link>
+                  <% end %>
+
+                  <div data-favorites-count data-video-id={video.id} class="text-xs font-semibold">
+                    {video.favorites_count}
+                  </div>
+                </div>
+              </div>
+
               <div class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent">
                 <div class="p-4 text-sm">
                   {video.caption}
@@ -92,5 +133,30 @@ defmodule VideoSuggestionWeb.FeedLive do
       <% end %>
     </div>
     """
+  end
+
+  @impl true
+  def handle_event("toggle-favorite", %{"id" => id}, socket) do
+    case socket.assigns.current_scope do
+      %{user: %{id: user_id}} ->
+        video_id = String.to_integer(id)
+
+        {:ok, %{favorited: favorited, favorites_count: favorites_count}} =
+          Videos.toggle_favorite(user_id, video_id)
+
+        videos =
+          Enum.map(socket.assigns.videos, fn video ->
+            if video.id == video_id do
+              %{video | favorited: favorited, favorites_count: favorites_count}
+            else
+              video
+            end
+          end)
+
+        {:noreply, assign(socket, videos: videos)}
+
+      _ ->
+        {:noreply, push_navigate(socket, to: ~p"/users/log-in")}
+    end
   end
 end

@@ -85,4 +85,28 @@ defmodule VideoSuggestion.VideosTest do
       assert Videos.favorites_count(video.id) == 2
     end
   end
+
+  describe "list_videos/1 (favorites metadata)" do
+    test "includes favorites_count and favorited for the current user" do
+      user1 = user_fixture()
+      user2 = user_fixture()
+
+      {:ok, video} =
+        Videos.create_video(%{
+          user_id: user1.id,
+          storage_key: "#{System.unique_integer([:positive])}.mp4"
+        })
+
+      assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user1.id, video.id)
+      assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user2.id, video.id)
+
+      [video_for_user1] = Videos.list_videos(limit: 1, current_user_id: user1.id)
+      assert video_for_user1.favorites_count == 2
+      assert video_for_user1.favorited == true
+
+      [video_for_anon] = Videos.list_videos(limit: 1)
+      assert video_for_anon.favorites_count == 2
+      assert video_for_anon.favorited == false
+    end
+  end
 end
