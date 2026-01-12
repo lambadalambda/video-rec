@@ -153,12 +153,12 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
         content_hash: :crypto.strong_rand_bytes(32)
       })
 
-    Enum.each(1..80, fn _ ->
+    Enum.each(1..80, fn i ->
       {:ok, _video} =
         Videos.create_video(%{
           user_id: user.id,
           storage_key: "#{System.unique_integer([:positive])}.mp4",
-          caption: "new",
+          caption: "new-#{i}",
           original_filename: "sample.mp4",
           content_type: "video/mp4",
           content_hash: :crypto.strong_rand_bytes(32)
@@ -169,12 +169,16 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
 
     assert html =~ ~s(data-feed-has-more="true")
     refute html =~ "oldest"
+    assert html =~ "new-80"
 
     html = render_hook(lv, "jump-to-end", %{})
 
     assert html =~ ~s(data-feed-has-more="false")
+    assert html =~ ~s(data-feed-mode="tail")
     assert html =~ "oldest"
-    assert html =~ ~s(data-feed-clone="prev")
-    assert html =~ ~s(data-feed-clone="next")
+    assert html =~ "new-1"
+    refute html =~ "new-80"
+    refute html =~ ~s(data-feed-clone="prev")
+    refute html =~ ~s(data-feed-clone="next")
   end
 end

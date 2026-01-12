@@ -4,6 +4,7 @@ defmodule VideoSuggestionWeb.FeedLive do
   alias VideoSuggestion.Videos
 
   @page_size 50
+  @wrap_window 11
 
   @impl true
   def mount(_params, _session, socket) do
@@ -17,10 +18,13 @@ defmodule VideoSuggestionWeb.FeedLive do
       Videos.list_videos(limit: @page_size + 1, current_user_id: current_user_id)
       |> take_page(@page_size)
 
+    mode = if has_more, do: :head, else: :full
+
     {:ok,
      assign(socket,
        videos: videos,
        has_more: has_more,
+       mode: mode,
        current_user_id: current_user_id
      )}
   end
@@ -61,6 +65,7 @@ defmodule VideoSuggestionWeb.FeedLive do
           id="feed"
           phx-hook="VideoFeed"
           data-feed-has-more={to_string(@has_more)}
+          data-feed-mode={to_string(@mode)}
           class="h-dvh overflow-y-scroll snap-y snap-mandatory no-scrollbar"
         >
           <div class="pointer-events-none fixed inset-y-0 right-0 z-20 hidden sm:flex flex-col justify-center gap-2 p-3">
@@ -113,7 +118,7 @@ defmodule VideoSuggestionWeb.FeedLive do
             </button>
           </div>
 
-          <%= if not @has_more and length(@videos) > 1 do %>
+          <%= if @mode == :full and length(@videos) > 1 do %>
             <.feed_item video={List.last(@videos)} current_scope={@current_scope} clone="prev" />
           <% end %>
 
@@ -121,7 +126,7 @@ defmodule VideoSuggestionWeb.FeedLive do
             <.feed_item video={video} current_scope={@current_scope} />
           <% end %>
 
-          <%= if not @has_more and length(@videos) > 1 do %>
+          <%= if @mode == :full and length(@videos) > 1 do %>
             <.feed_item video={hd(@videos)} current_scope={@current_scope} clone="next" />
           <% end %>
         </div>
@@ -222,11 +227,11 @@ defmodule VideoSuggestionWeb.FeedLive do
   @impl true
   def handle_event("load-more", _params, socket) do
     cond do
-      socket.assigns.has_more == false ->
+      socket.assigns.mode != :head or socket.assigns.has_more == false ->
         {:noreply, socket}
 
       socket.assigns.videos == [] ->
-        {:noreply, assign(socket, has_more: false)}
+        {:noreply, assign(socket, has_more: false, mode: :full)}
 
       true ->
         last_video = List.last(socket.assigns.videos)
@@ -239,53 +244,40 @@ defmodule VideoSuggestionWeb.FeedLive do
           )
           |> take_page(@page_size)
 
+        mode = if has_more, do: :head, else: :full
+
         {:noreply,
          socket
          |> assign(:videos, socket.assigns.videos ++ more)
-         |> assign(:has_more, has_more)}
+         |> assign(:has_more, has_more)
+         |> assign(:mode, mode)}
     end
   end
 
   @impl true
   def handle_event("jump-to-end", _params, socket) do
     videos =
-      socket.assigns.videos
-      |> load_all_remaining(socket.assigns.current_user_id)
+      Videos.list_tail_videos(
+        limit: @wrap_window,
+        current_user_id: socket.assigns.current_user_id
+      )
 
-    {:noreply, assign(socket, videos: videos, has_more: false)}
+    {:noreply, assign(socket, videos: videos, has_more: false, mode: :tail)}
+  end
+
+  @impl true
+  def handle_event("jump-to-start", _params, socket) do
+    {videos, has_more} =
+      Videos.list_videos(limit: @page_size + 1, current_user_id: socket.assigns.current_user_id)
+      |> take_page(@page_size)
+
+    mode = if has_more, do: :head, else: :full
+
+    {:noreply, assign(socket, videos: videos, has_more: has_more, mode: mode)}
   end
 
   defp take_page(videos, page_size) when is_list(videos) and is_integer(page_size) do
     {page, rest} = Enum.split(videos, page_size)
     {page, rest != []}
-  end
-
-  defp load_all_remaining(videos, current_user_id) when is_list(videos) do
-    do_load_all_remaining(videos, current_user_id)
-  end
-
-  defp do_load_all_remaining([], _current_user_id), do: []
-
-  defp do_load_all_remaining(videos, current_user_id) do
-    last_video = List.last(videos)
-
-    {more, has_more} =
-      Videos.list_videos(
-        limit: @page_size + 1,
-        current_user_id: current_user_id,
-        before: {last_video.inserted_at, last_video.id}
-      )
-      |> take_page(@page_size)
-
-    cond do
-      more == [] ->
-        videos
-
-      has_more ->
-        do_load_all_remaining(videos ++ more, current_user_id)
-
-      true ->
-        videos ++ more
-    end
   end
 end

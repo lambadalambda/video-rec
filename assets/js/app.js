@@ -33,6 +33,7 @@ const VideoFeed = {
     this.activeVideoEl = null
     this.loadingMore = false
     this.pendingJumpToEnd = false
+    this.pendingJumpToStart = false
     this.observedVideos = new Set()
 
     this.prevButton = this.el.querySelector("[data-feed-prev]")
@@ -152,9 +153,14 @@ const VideoFeed = {
     this.applySoundToActiveVideo()
     this.maybeRequestMore()
 
-    if (this.pendingJumpToEnd && !this.hasMore()) {
+    if (this.pendingJumpToEnd && this.mode() === "tail") {
       this.pendingJumpToEnd = false
       this.scrollToIndex(this.lastRealIndex, "auto")
+    }
+
+    if (this.pendingJumpToStart && this.mode() !== "tail") {
+      this.pendingJumpToStart = false
+      this.scrollToIndex(this.firstRealIndex, "auto")
     }
   },
 
@@ -184,6 +190,10 @@ const VideoFeed = {
     return this.el.dataset.feedHasMore === "true"
   },
 
+  mode() {
+    return this.el.dataset.feedMode || "head"
+  },
+
   maybeRequestMore() {
     if (!this.hasMore()) return
     if (this.loadingMore) return
@@ -199,10 +209,22 @@ const VideoFeed = {
       delta < 0 &&
       this.activeIndex === this.firstRealIndex &&
       this.hasMore() &&
+      this.mode() === "head" &&
       !this.pendingJumpToEnd
     ) {
       this.pendingJumpToEnd = true
       this.pushEvent("jump-to-end", {})
+      return
+    }
+
+    if (
+      delta > 0 &&
+      this.activeIndex === this.lastRealIndex &&
+      this.mode() === "tail" &&
+      !this.pendingJumpToStart
+    ) {
+      this.pendingJumpToStart = true
+      this.pushEvent("jump-to-start", {})
       return
     }
 

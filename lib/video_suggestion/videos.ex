@@ -55,6 +55,44 @@ defmodule VideoSuggestion.Videos do
     Repo.all(query)
   end
 
+  def list_tail_videos(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+    current_user_id = Keyword.get(opts, :current_user_id)
+
+    tail_ids =
+      from v in Video,
+        order_by: [asc: v.inserted_at, asc: v.id],
+        limit: ^limit,
+        select: v.id
+
+    query =
+      from v in Video,
+        where: v.id in subquery(tail_ids),
+        left_join: f in Favorite,
+        on: f.video_id == v.id,
+        group_by: v.id,
+        order_by: [desc: v.inserted_at, desc: v.id],
+        select_merge: %{favorites_count: count(f.id)}
+
+    query =
+      if is_integer(current_user_id) do
+        from [v, f] in query,
+          select_merge: %{
+            favorited:
+              fragment(
+                "COALESCE(BOOL_OR(? = ?), FALSE)",
+                f.user_id,
+                ^current_user_id
+              )
+          }
+      else
+        from [v, _f] in query,
+          select_merge: %{favorited: false}
+      end
+
+    Repo.all(query)
+  end
+
   def get_video!(id), do: Repo.get!(Video, id)
 
   def create_video(attrs) do
