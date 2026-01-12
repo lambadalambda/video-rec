@@ -18,7 +18,7 @@ mix setup
 mix phx.server
 ```
 
-Open `http://localhost:4000`, register at `/users/register`, then use `/dev/mailbox` (dev only) to grab the login link. The first registered user is admin; upload at `/admin/videos/new`.
+Open `http://localhost:4040`, register at `/users/register`, then use `/dev/mailbox` (dev only) to grab the login link. The first registered user is admin; upload at `/admin/videos/new`.
 
 ## Recommendation Core
 
