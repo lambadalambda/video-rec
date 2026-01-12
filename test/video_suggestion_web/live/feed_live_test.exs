@@ -139,4 +139,42 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
     assert html =~ ~s(data-feed-clone="prev")
     assert html =~ ~s(data-feed-clone="next")
   end
+
+  test "feed can jump to the end to support previous-from-first wrap", %{conn: conn} do
+    user = user_fixture()
+
+    {:ok, _oldest} =
+      Videos.create_video(%{
+        user_id: user.id,
+        storage_key: "#{System.unique_integer([:positive])}.mp4",
+        caption: "oldest",
+        original_filename: "sample.mp4",
+        content_type: "video/mp4",
+        content_hash: :crypto.strong_rand_bytes(32)
+      })
+
+    Enum.each(1..80, fn _ ->
+      {:ok, _video} =
+        Videos.create_video(%{
+          user_id: user.id,
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          caption: "new",
+          original_filename: "sample.mp4",
+          content_type: "video/mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+    end)
+
+    {:ok, lv, html} = live(conn, "/")
+
+    assert html =~ ~s(data-feed-has-more="true")
+    refute html =~ "oldest"
+
+    html = render_hook(lv, "jump-to-end", %{})
+
+    assert html =~ ~s(data-feed-has-more="false")
+    assert html =~ "oldest"
+    assert html =~ ~s(data-feed-clone="prev")
+    assert html =~ ~s(data-feed-clone="next")
+  end
 end

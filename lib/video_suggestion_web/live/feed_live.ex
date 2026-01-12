@@ -246,8 +246,46 @@ defmodule VideoSuggestionWeb.FeedLive do
     end
   end
 
+  @impl true
+  def handle_event("jump-to-end", _params, socket) do
+    videos =
+      socket.assigns.videos
+      |> load_all_remaining(socket.assigns.current_user_id)
+
+    {:noreply, assign(socket, videos: videos, has_more: false)}
+  end
+
   defp take_page(videos, page_size) when is_list(videos) and is_integer(page_size) do
     {page, rest} = Enum.split(videos, page_size)
     {page, rest != []}
+  end
+
+  defp load_all_remaining(videos, current_user_id) when is_list(videos) do
+    do_load_all_remaining(videos, current_user_id)
+  end
+
+  defp do_load_all_remaining([], _current_user_id), do: []
+
+  defp do_load_all_remaining(videos, current_user_id) do
+    last_video = List.last(videos)
+
+    {more, has_more} =
+      Videos.list_videos(
+        limit: @page_size + 1,
+        current_user_id: current_user_id,
+        before: {last_video.inserted_at, last_video.id}
+      )
+      |> take_page(@page_size)
+
+    cond do
+      more == [] ->
+        videos
+
+      has_more ->
+        do_load_all_remaining(videos ++ more, current_user_id)
+
+      true ->
+        videos ++ more
+    end
   end
 end

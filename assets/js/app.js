@@ -32,6 +32,7 @@ const VideoFeed = {
     this.activeIndex = 0
     this.activeVideoEl = null
     this.loadingMore = false
+    this.pendingJumpToEnd = false
     this.observedVideos = new Set()
 
     this.prevButton = this.el.querySelector("[data-feed-prev]")
@@ -150,6 +151,11 @@ const VideoFeed = {
 
     this.applySoundToActiveVideo()
     this.maybeRequestMore()
+
+    if (this.pendingJumpToEnd && !this.hasMore()) {
+      this.pendingJumpToEnd = false
+      this.scrollToIndex(this.lastRealIndex, "auto")
+    }
   },
 
   syncElements() {
@@ -189,6 +195,17 @@ const VideoFeed = {
   },
 
   scrollBy(delta) {
+    if (
+      delta < 0 &&
+      this.activeIndex === this.firstRealIndex &&
+      this.hasMore() &&
+      !this.pendingJumpToEnd
+    ) {
+      this.pendingJumpToEnd = true
+      this.pushEvent("jump-to-end", {})
+      return
+    }
+
     const nextIndex = this.clampIndex(this.activeIndex + delta)
     this.scrollToIndex(nextIndex)
   },
