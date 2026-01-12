@@ -75,9 +75,16 @@ defmodule VideoSuggestion.Accounts do
 
   """
   def register_user(attrs) do
-    %User{}
-    |> User.email_changeset(attrs)
-    |> Repo.insert()
+    changeset = User.email_changeset(%User{}, attrs)
+
+    changeset =
+      if Repo.aggregate(User, :count, :id) == 0 do
+        Ecto.Changeset.put_change(changeset, :is_admin, true)
+      else
+        changeset
+      end
+
+    Repo.insert(changeset)
   end
 
   ## Settings

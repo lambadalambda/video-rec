@@ -85,6 +85,24 @@ defmodule VideoSuggestion.AccountsTest do
       assert is_nil(user.confirmed_at)
       assert is_nil(user.password)
     end
+
+    test "bootstraps the first registered user as admin" do
+      {:ok, user} = Accounts.register_user(valid_user_attributes())
+      assert user.is_admin
+    end
+
+    test "does not allow users to self-assign admin via registration params" do
+      {:ok, _admin} = Accounts.register_user(valid_user_attributes())
+
+      {:ok, user} =
+        Accounts.register_user(
+          valid_user_attributes(%{
+            is_admin: true
+          })
+        )
+
+      refute user.is_admin
+    end
   end
 
   describe "sudo_mode?/2" do
