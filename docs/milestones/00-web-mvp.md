@@ -7,4 +7,9 @@ Goal: ship a working, mobile-first site before recommendation logic.
 - [x] Admin-only video upload (store locally; no analysis yet)
 - [x] Public (or logged-in) feed showing uploaded videos
 - [x] TikTok-style mobile UX (vertical, full-screen, swipe/scroll)
+  - [x] Fit arbitrary aspect ratios (no cropping)
+  - [x] Hide native video controls
+  - [x] Desktop next/prev controls + arrow keys
+  - [x] Preload adjacent videos
+  - [x] Hide feed scrollbars
 - [x] Basic access control + smoke tests
