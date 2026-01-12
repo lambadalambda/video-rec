@@ -15,6 +15,7 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLiveTest do
     assert html =~ "Upload video"
     assert html =~ ~s(enctype="multipart/form-data")
     assert html =~ ~s(phx-change="validate")
+    assert html =~ "data-phx-auto-upload"
   end
 
   test "non-admin cannot access the upload page", %{conn: conn} do

@@ -11,6 +11,7 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
       |> assign(form: to_form(%{}, as: "video"))
       |> allow_upload(:video,
         accept: ~w(.mp4 .m4v .mov .webm),
+        auto_upload: true,
         max_entries: 1,
         max_file_size: 200_000_000
       )
