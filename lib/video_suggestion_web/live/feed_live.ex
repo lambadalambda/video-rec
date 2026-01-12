@@ -113,7 +113,7 @@ defmodule VideoSuggestionWeb.FeedLive do
             </button>
           </div>
 
-          <%= if length(@videos) > 1 do %>
+          <%= if not @has_more and length(@videos) > 1 do %>
             <.feed_item video={List.last(@videos)} current_scope={@current_scope} clone="prev" />
           <% end %>
 

@@ -128,6 +128,8 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
 
     {:ok, lv, html} = live(conn, "/")
     assert html =~ ~s(data-feed-has-more="true")
+    refute html =~ ~s(data-feed-clone="prev")
+    refute html =~ ~s(data-feed-clone="next")
     refute html =~ "oldest"
 
     html = render_hook(lv, "load-more", %{})
