@@ -7,6 +7,7 @@
 
 ## Milestones (working checklists)
 
+- `docs/milestones/00-web-mvp.md`
 - `docs/milestones/01-vector-math.md`
 - `docs/milestones/02-ranking-diversity.md`
 - `docs/milestones/03-user-taste-profiles.md`
