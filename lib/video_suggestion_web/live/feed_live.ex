@@ -45,12 +45,11 @@ defmodule VideoSuggestionWeb.FeedLive do
             <div class="h-dvh snap-start relative flex items-center justify-center bg-black">
               <video
                 data-feed-video
-                class="h-full w-full object-cover"
+                class="h-full w-full object-contain"
                 src={"/uploads/" <> video.storage_key}
                 playsinline
                 muted
                 loop
-                controls
                 preload="metadata"
               >
               </video>
