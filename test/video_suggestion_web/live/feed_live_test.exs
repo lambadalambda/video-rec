@@ -68,4 +68,31 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
 
     assert Videos.favorites_count(video.id) == 0
   end
+
+  test "feed wraps by rendering clone items when there are multiple videos", %{conn: conn} do
+    user = user_fixture()
+
+    {:ok, _video_1} =
+      Videos.create_video(%{
+        user_id: user.id,
+        storage_key: "#{System.unique_integer([:positive])}.mp4",
+        caption: "first",
+        original_filename: "sample.mp4",
+        content_type: "video/mp4"
+      })
+
+    {:ok, _video_2} =
+      Videos.create_video(%{
+        user_id: user.id,
+        storage_key: "#{System.unique_integer([:positive])}.mp4",
+        caption: "second",
+        original_filename: "sample.mp4",
+        content_type: "video/mp4"
+      })
+
+    {:ok, _lv, html} = live(conn, "/")
+
+    assert html =~ ~s(data-feed-clone="prev")
+    assert html =~ ~s(data-feed-clone="next")
+  end
 end

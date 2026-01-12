@@ -32,7 +32,12 @@ const VideoFeed = {
       .map(item => item.querySelector("video[data-feed-video]"))
       .filter(Boolean)
 
-    this.activeIndex = 0
+    this.wrapEnabled =
+      this.feedItems.length > 2 &&
+      this.feedItems[0]?.dataset.feedClone === "prev" &&
+      this.feedItems[this.feedItems.length - 1]?.dataset.feedClone === "next"
+
+    this.activeIndex = this.wrapEnabled ? 1 : 0
 
     this.prevButton = this.el.querySelector("[data-feed-prev]")
     this.nextButton = this.el.querySelector("[data-feed-next]")
@@ -86,6 +91,10 @@ const VideoFeed = {
       }
     }
 
+    if (this.wrapEnabled) {
+      this.scrollToIndex(1, "auto")
+    }
+
     this.observer = new IntersectionObserver(
       entries => {
         for (const entry of entries) {
@@ -117,11 +126,11 @@ const VideoFeed = {
     this.scrollToIndex(nextIndex)
   },
 
-  scrollToIndex(index) {
+  scrollToIndex(index, behavior = "smooth") {
     const item = this.feedItems[index]
     if (!item) return
 
-    item.scrollIntoView({behavior: "smooth", block: "start", inline: "nearest"})
+    item.scrollIntoView({behavior, block: "start", inline: "nearest"})
   },
 
   clampIndex(index) {
@@ -131,7 +140,19 @@ const VideoFeed = {
   setActiveVideo(video) {
     const item = video.closest("[data-feed-item]")
     const index = item ? this.feedItems.indexOf(item) : -1
-    if (index >= 0) this.activeIndex = index
+    if (index < 0) return
+
+    const clone = item.dataset.feedClone
+    if (this.wrapEnabled && clone) {
+      const targetIndex = clone === "prev" ? this.feedItems.length - 2 : 1
+      this.activeIndex = targetIndex
+      video.pause()
+      video.muted = true
+      this.scrollToIndex(targetIndex, "auto")
+      return
+    }
+
+    this.activeIndex = index
 
     this.applySoundToVideo(video)
     video.play().catch(() => {})
