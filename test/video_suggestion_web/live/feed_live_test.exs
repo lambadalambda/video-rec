@@ -16,7 +16,8 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
         storage_key: "sample.mp4",
         caption: "hello",
         original_filename: "sample.mp4",
-        content_type: "video/mp4"
+        content_type: "video/mp4",
+        content_hash: :crypto.strong_rand_bytes(32)
       })
 
     {:ok, _lv, html} = live(conn, "/")
@@ -44,7 +45,8 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
         storage_key: "#{System.unique_integer([:positive])}.mp4",
         caption: "hello",
         original_filename: "sample.mp4",
-        content_type: "video/mp4"
+        content_type: "video/mp4",
+        content_hash: :crypto.strong_rand_bytes(32)
       })
 
     {:ok, lv, _html} = live(log_in_user(conn, user), "/")
@@ -79,7 +81,8 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
         storage_key: "#{System.unique_integer([:positive])}.mp4",
         caption: "first",
         original_filename: "sample.mp4",
-        content_type: "video/mp4"
+        content_type: "video/mp4",
+        content_hash: :crypto.strong_rand_bytes(32)
       })
 
     {:ok, _video_2} =
@@ -88,7 +91,8 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
         storage_key: "#{System.unique_integer([:positive])}.mp4",
         caption: "second",
         original_filename: "sample.mp4",
-        content_type: "video/mp4"
+        content_type: "video/mp4",
+        content_hash: :crypto.strong_rand_bytes(32)
       })
 
     {:ok, _lv, html} = live(conn, "/")

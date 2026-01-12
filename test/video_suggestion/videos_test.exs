@@ -15,7 +15,8 @@ defmodule VideoSuggestion.VideosTest do
                  caption: "hello",
                  storage_key: "abc123.mp4",
                  original_filename: "myvideo.mp4",
-                 content_type: "video/mp4"
+                 content_type: "video/mp4",
+                 content_hash: :crypto.strong_rand_bytes(32)
                })
 
       assert video.user_id == user.id
@@ -30,8 +31,19 @@ defmodule VideoSuggestion.VideosTest do
     test "returns videos newest first" do
       user = user_fixture()
 
-      {:ok, older} = Videos.create_video(%{user_id: user.id, storage_key: "older.mp4"})
-      {:ok, newer} = Videos.create_video(%{user_id: user.id, storage_key: "newer.mp4"})
+      {:ok, older} =
+        Videos.create_video(%{
+          user_id: user.id,
+          storage_key: "older.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, newer} =
+        Videos.create_video(%{
+          user_id: user.id,
+          storage_key: "newer.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
 
       newer_id = newer.id
       older_id = older.id
@@ -47,7 +59,8 @@ defmodule VideoSuggestion.VideosTest do
       {:ok, video} =
         Videos.create_video(%{
           user_id: user.id,
-          storage_key: "#{System.unique_integer([:positive])}.mp4"
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
         })
 
       assert Videos.favorites_count(video.id) == 0
@@ -73,7 +86,8 @@ defmodule VideoSuggestion.VideosTest do
       {:ok, video} =
         Videos.create_video(%{
           user_id: user1.id,
-          storage_key: "#{System.unique_integer([:positive])}.mp4"
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
         })
 
       assert {:ok, %{favorited: true, favorites_count: 1}} =
@@ -94,7 +108,8 @@ defmodule VideoSuggestion.VideosTest do
       {:ok, video} =
         Videos.create_video(%{
           user_id: user1.id,
-          storage_key: "#{System.unique_integer([:positive])}.mp4"
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
         })
 
       assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user1.id, video.id)

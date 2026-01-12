@@ -115,32 +115,42 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
           consume_uploaded_entries(socket, :video, fn %{path: path}, entry ->
             ext = Path.extname(entry.client_name) |> String.downcase()
             storage_key = entry.uuid <> ext
+            content_hash = Uploads.sha256_file(path)
 
-            Uploads.ensure_dir!()
-            File.cp!(path, Uploads.path(storage_key))
+            if Videos.content_hash_exists?(content_hash) do
+              {:ok, {:duplicate, entry.client_name}}
+            else
+              Uploads.ensure_dir!()
+              File.cp!(path, Uploads.path(storage_key))
 
-            {:ok,
-             %{
-               storage_key: storage_key,
-               original_filename: entry.client_name,
-               content_type: entry.client_type
-             }}
+              {:ok,
+               {:uploaded,
+                %{
+                  storage_key: storage_key,
+                  original_filename: entry.client_name,
+                  content_type: entry.client_type,
+                  content_hash: content_hash
+                }}}
+            end
           end)
 
         case results do
           [
-            %{
-              storage_key: storage_key,
-              original_filename: original_filename,
-              content_type: content_type
-            }
+            {:uploaded,
+             %{
+               storage_key: storage_key,
+               original_filename: original_filename,
+               content_type: content_type,
+               content_hash: content_hash
+             }}
           ] ->
             case Videos.create_video(%{
                    user_id: uploader.id,
                    caption: caption,
                    storage_key: storage_key,
                    original_filename: original_filename,
-                   content_type: content_type
+                   content_type: content_type,
+                   content_hash: content_hash
                  }) do
               {:ok, _video} ->
                 {:noreply,
@@ -149,9 +159,18 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
                  |> push_navigate(to: ~p"/")}
 
               {:error, %Ecto.Changeset{} = changeset} ->
-                {:noreply,
-                 put_flash(socket, :error, "Upload failed: #{inspect(changeset.errors)}")}
+                if changeset.errors[:content_hash] do
+                  File.rm_rf(Uploads.path(storage_key))
+
+                  {:noreply, put_flash(socket, :info, "Duplicate upload ignored.")}
+                else
+                  {:noreply,
+                   put_flash(socket, :error, "Upload failed: #{inspect(changeset.errors)}")}
+                end
             end
+
+          [{:duplicate, _client_name}] ->
+            {:noreply, put_flash(socket, :info, "Duplicate upload ignored.")}
 
           [] ->
             {:noreply, put_flash(socket, :error, "Please choose a video file to upload.")}

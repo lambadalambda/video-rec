@@ -49,6 +49,10 @@ defmodule VideoSuggestion.Videos do
     |> Repo.insert()
   end
 
+  def content_hash_exists?(content_hash) when is_binary(content_hash) do
+    Repo.exists?(from v in Video, where: v.content_hash == ^content_hash)
+  end
+
   def favorited?(user_id, video_id) when is_integer(user_id) and is_integer(video_id) do
     Repo.exists?(
       from f in Favorite,

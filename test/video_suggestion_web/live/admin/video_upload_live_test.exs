@@ -103,4 +103,44 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLiveTest do
     html = render(lv)
     assert html =~ "unacceptable file type"
   end
+
+  test "duplicate uploads are ignored", %{conn: conn} do
+    admin = user_fixture()
+    assert admin.is_admin
+
+    conn = log_in_user(conn, admin)
+
+    {:ok, lv, _html} = live(conn, "/admin/videos/new")
+
+    upload =
+      file_input(lv, "#video_upload_form", :video, [
+        %{name: "sample.mp4", content: "same-content", type: "video/mp4"}
+      ])
+
+    render_upload(upload, "sample.mp4")
+
+    lv
+    |> form("#video_upload_form", video: %{"caption" => "hello"})
+    |> render_submit()
+
+    assert_redirect(lv, "/")
+
+    [video] = Videos.list_videos(limit: 10)
+    on_exit(fn -> File.rm_rf(Uploads.path(video.storage_key)) end)
+
+    {:ok, lv2, _html} = live(conn, "/admin/videos/new")
+
+    upload2 =
+      file_input(lv2, "#video_upload_form", :video, [
+        %{name: "again.mp4", content: "same-content", type: "video/mp4"}
+      ])
+
+    render_upload(upload2, "again.mp4")
+
+    lv2
+    |> form("#video_upload_form", video: %{"caption" => "hello"})
+    |> render_submit()
+
+    assert length(Videos.list_videos(limit: 10)) == 1
+  end
 end
