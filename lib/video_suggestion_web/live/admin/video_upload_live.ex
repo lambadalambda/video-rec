@@ -54,49 +54,60 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
     uploader = socket.assigns.current_scope.user
     caption = Map.get(video_params, "caption")
 
-    results =
-      consume_uploaded_entries(socket, :video, fn %{path: path}, entry ->
-        ext = Path.extname(entry.client_name) |> String.downcase()
-        storage_key = entry.uuid <> ext
+    {completed, in_progress} = uploaded_entries(socket, :video)
 
-        Uploads.ensure_dir!()
-        File.cp!(path, Uploads.path(storage_key))
+    cond do
+      in_progress != [] ->
+        {:noreply, put_flash(socket, :error, "Upload still in progress. Please wait for it to finish.")}
 
-        {:ok,
-         %{
-           storage_key: storage_key,
-           original_filename: entry.client_name,
-           content_type: entry.client_type
-         }}
-      end)
-
-    case results do
-      [
-        %{
-          storage_key: storage_key,
-          original_filename: original_filename,
-          content_type: content_type
-        }
-      ] ->
-        case Videos.create_video(%{
-               user_id: uploader.id,
-               caption: caption,
-               storage_key: storage_key,
-               original_filename: original_filename,
-               content_type: content_type
-             }) do
-          {:ok, _video} ->
-            {:noreply,
-             socket
-             |> put_flash(:info, "Uploaded!")
-             |> push_navigate(to: ~p"/")}
-
-          {:error, %Ecto.Changeset{} = changeset} ->
-            {:noreply, put_flash(socket, :error, "Upload failed: #{inspect(changeset.errors)}")}
-        end
-
-      [] ->
+      completed == [] ->
         {:noreply, put_flash(socket, :error, "Please choose a video file to upload.")}
+
+      true ->
+        results =
+          consume_uploaded_entries(socket, :video, fn %{path: path}, entry ->
+            ext = Path.extname(entry.client_name) |> String.downcase()
+            storage_key = entry.uuid <> ext
+
+            Uploads.ensure_dir!()
+            File.cp!(path, Uploads.path(storage_key))
+
+            {:ok,
+             %{
+               storage_key: storage_key,
+               original_filename: entry.client_name,
+               content_type: entry.client_type
+             }}
+          end)
+
+        case results do
+          [
+            %{
+              storage_key: storage_key,
+              original_filename: original_filename,
+              content_type: content_type
+            }
+          ] ->
+            case Videos.create_video(%{
+                   user_id: uploader.id,
+                   caption: caption,
+                   storage_key: storage_key,
+                   original_filename: original_filename,
+                   content_type: content_type
+                 }) do
+              {:ok, _video} ->
+                {:noreply,
+                 socket
+                 |> put_flash(:info, "Uploaded!")
+                 |> push_navigate(to: ~p"/")}
+
+              {:error, %Ecto.Changeset{} = changeset} ->
+                {:noreply, put_flash(socket, :error, "Upload failed: #{inspect(changeset.errors)}")}
+            end
+
+          [] ->
+            {:noreply, put_flash(socket, :error, "Please choose a video file to upload.")}
+        end
     end
   end
 end

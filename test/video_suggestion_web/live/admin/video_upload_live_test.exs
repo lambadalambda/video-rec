@@ -53,4 +53,37 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLiveTest do
     {:ok, _feed, feed_html} = live(conn, "/")
     assert feed_html =~ Uploads.url(video.storage_key)
   end
+
+  test "admin gets a helpful message if submitting before upload completes", %{conn: conn} do
+    admin = user_fixture()
+    assert admin.is_admin
+
+    {:ok, lv, _html} = live(log_in_user(conn, admin), "/admin/videos/new")
+
+    upload =
+      file_input(lv, "#video_upload_form", :video, [
+        %{name: "sample.mp4", content: "not-a-real-mp4", type: "video/mp4"}
+      ])
+
+    render_upload(upload, "sample.mp4", 50)
+
+    html =
+      lv
+      |> form("#video_upload_form", video: %{"caption" => "hello"})
+      |> render_submit()
+
+    assert html =~ "Upload still in progress"
+
+    render_upload(upload, "sample.mp4", 50)
+
+    lv
+    |> form("#video_upload_form", video: %{"caption" => "hello"})
+    |> render_submit()
+
+    assert_redirect(lv, "/")
+
+    [video] = Videos.list_videos(limit: 1)
+    on_exit(fn -> File.rm_rf(Uploads.path(video.storage_key)) end)
+  end
+
 end
