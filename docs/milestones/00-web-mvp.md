@@ -7,6 +7,7 @@ Goal: ship a working, mobile-first site before recommendation logic.
 - [x] Admin-only video upload (store locally; no analysis yet)
   - [x] Deduplicate by content hash
   - [x] Bulk upload (ignore duplicates)
+- [x] Developer tool: `mix videos.import PATH` to bulk-import local videos
 - [x] Public (or logged-in) feed showing uploaded videos
 - [x] TikTok-style mobile UX (vertical, full-screen, swipe/scroll)
   - [x] Fit arbitrary aspect ratios (no cropping)
