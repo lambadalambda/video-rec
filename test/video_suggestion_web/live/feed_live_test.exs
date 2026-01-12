@@ -22,6 +22,7 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
     {:ok, _lv, html} = live(conn, "/")
 
     assert html =~ ~s(id="feed")
+    assert html =~ "no-scrollbar"
     assert html =~ ~s(phx-hook="VideoFeed")
     assert html =~ "data-feed-prev"
     assert html =~ "data-feed-next"

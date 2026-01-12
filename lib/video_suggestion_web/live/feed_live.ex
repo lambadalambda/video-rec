@@ -40,7 +40,11 @@ defmodule VideoSuggestionWeb.FeedLive do
           No videos yet.
         </div>
       <% else %>
-        <div id="feed" phx-hook="VideoFeed" class="h-dvh overflow-y-scroll snap-y snap-mandatory">
+        <div
+          id="feed"
+          phx-hook="VideoFeed"
+          class="h-dvh overflow-y-scroll snap-y snap-mandatory no-scrollbar"
+        >
           <div class="pointer-events-none fixed inset-y-0 right-0 z-20 hidden sm:flex flex-col justify-center gap-2 p-3">
             <button
               type="button"
