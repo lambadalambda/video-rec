@@ -153,6 +153,27 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
             end
           )
 
+        # Best-effort cleanup: close any live upload channels now that we've processed everything.
+        conf = socket.assigns.uploads.video
+
+        Enum.each(conf.entries, fn entry ->
+          if entry.done? do
+            pid = Phoenix.LiveView.UploadConfig.entry_pid(conf, entry)
+
+            if is_pid(pid) do
+              try do
+                _ =
+                  Phoenix.LiveView.UploadChannel.consume(pid, entry, fn _meta, _entry ->
+                    {:ok, :ok}
+                  end)
+              catch
+                :exit, {:noproc, _} -> :ok
+                :exit, _ -> :ok
+              end
+            end
+          end
+        end)
+
         message =
           cond do
             created_count > 0 and duplicate_count > 0 ->
