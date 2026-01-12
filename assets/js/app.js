@@ -42,6 +42,12 @@ const VideoFeed = {
     this.prevButton = this.el.querySelector("[data-feed-prev]")
     this.nextButton = this.el.querySelector("[data-feed-next]")
 
+    this.playToggle = this.el.querySelector("[data-feed-play-toggle]")
+    this.playIcon = this.el.querySelector("[data-feed-play-icon]")
+    this.pauseIcon = this.el.querySelector("[data-feed-pause-icon]")
+    this.userPaused = false
+    this.updatePlayUI()
+
     this.soundToggle = this.el.querySelector("[data-feed-sound-toggle]")
     this.soundIconOn = this.el.querySelector("[data-feed-sound-on]")
     this.soundIconOff = this.el.querySelector("[data-feed-sound-off]")
@@ -67,6 +73,22 @@ const VideoFeed = {
       this.applySoundToActiveVideo()
     }
 
+    this.onPlayToggle = e => {
+      e.preventDefault()
+      this.userPaused = !this.userPaused
+      this.updatePlayUI()
+
+      const video = this.videos[this.activeIndex]
+      if (!video) return
+
+      if (this.userPaused) {
+        video.pause()
+      } else {
+        this.applySoundToVideo(video)
+        video.play().catch(() => {})
+      }
+    }
+
     this.onKeyDown = e => {
       if (e.defaultPrevented) return
 
@@ -78,16 +100,6 @@ const VideoFeed = {
       } else if (e.key === "ArrowUp" || e.key === "PageUp") {
         e.preventDefault()
         this.scrollBy(-1)
-      }
-    }
-
-    this.onVideoClick = e => {
-      const video = e.currentTarget
-      if (video.paused) {
-        this.applySoundToVideo(video)
-        video.play().catch(() => {})
-      } else {
-        video.pause()
       }
     }
 
@@ -112,11 +124,11 @@ const VideoFeed = {
 
     this.videos.forEach(video => {
       this.observer.observe(video)
-      video.addEventListener("click", this.onVideoClick)
     })
 
     this.prevButton?.addEventListener("click", this.onPrev)
     this.nextButton?.addEventListener("click", this.onNext)
+    this.playToggle?.addEventListener("click", this.onPlayToggle)
     this.soundToggle?.addEventListener("click", this.onSoundToggle)
     window.addEventListener("keydown", this.onKeyDown)
   },
@@ -145,6 +157,8 @@ const VideoFeed = {
     const clone = item.dataset.feedClone
     if (this.wrapEnabled && clone) {
       const targetIndex = clone === "prev" ? this.feedItems.length - 2 : 1
+      this.userPaused = false
+      this.updatePlayUI()
       this.activeIndex = targetIndex
       video.pause()
       video.muted = true
@@ -152,10 +166,17 @@ const VideoFeed = {
       return
     }
 
+    const changed = index !== this.activeIndex
     this.activeIndex = index
+    if (changed) {
+      this.userPaused = false
+      this.updatePlayUI()
+    }
 
     this.applySoundToVideo(video)
-    video.play().catch(() => {})
+    if (!this.userPaused) {
+      video.play().catch(() => {})
+    }
 
     this.preloadIndex(this.activeIndex + 1)
     this.preloadIndex(this.activeIndex - 1)
@@ -172,8 +193,18 @@ const VideoFeed = {
 
     this.applySoundToVideo(video)
 
-    if (this.soundOn) {
+    if (this.soundOn && !this.userPaused) {
       video.play().catch(() => {})
+    }
+  },
+
+  updatePlayUI() {
+    if (this.userPaused) {
+      this.playIcon?.classList.remove("hidden")
+      this.pauseIcon?.classList.add("hidden")
+    } else {
+      this.playIcon?.classList.add("hidden")
+      this.pauseIcon?.classList.remove("hidden")
     }
   },
 
@@ -201,9 +232,9 @@ const VideoFeed = {
   destroyed() {
     this.observer?.disconnect()
 
-    this.videos?.forEach(video => video.removeEventListener("click", this.onVideoClick))
     this.prevButton?.removeEventListener("click", this.onPrev)
     this.nextButton?.removeEventListener("click", this.onNext)
+    this.playToggle?.removeEventListener("click", this.onPlayToggle)
     this.soundToggle?.removeEventListener("click", this.onSoundToggle)
     window.removeEventListener("keydown", this.onKeyDown)
   },

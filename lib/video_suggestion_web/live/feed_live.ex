@@ -74,6 +74,20 @@ defmodule VideoSuggestionWeb.FeedLive do
           <div class="pointer-events-none fixed right-0 bottom-0 z-20 flex flex-col items-center gap-2 p-3">
             <button
               type="button"
+              data-feed-play-toggle
+              aria-label="Play/pause"
+              class="pointer-events-auto btn btn-circle btn-ghost btn-sm"
+            >
+              <span data-feed-pause-icon>
+                <.icon name="hero-pause" class="size-5" />
+              </span>
+              <span data-feed-play-icon class="hidden">
+                <.icon name="hero-play" class="size-5" />
+              </span>
+            </button>
+
+            <button
+              type="button"
               data-feed-sound-toggle
               aria-label="Toggle sound"
               class="pointer-events-auto btn btn-circle btn-ghost btn-sm"

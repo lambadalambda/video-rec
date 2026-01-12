@@ -26,6 +26,7 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
     assert html =~ ~s(phx-hook="VideoFeed")
     assert html =~ "data-feed-prev"
     assert html =~ "data-feed-next"
+    assert html =~ "data-feed-play-toggle"
     assert html =~ "data-feed-sound-toggle"
     assert html =~ "data-feed-item"
     assert html =~ "data-feed-video"
