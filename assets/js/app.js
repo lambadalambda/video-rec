@@ -37,6 +37,13 @@ const VideoFeed = {
     this.prevButton = this.el.querySelector("[data-feed-prev]")
     this.nextButton = this.el.querySelector("[data-feed-next]")
 
+    this.soundToggle = this.el.querySelector("[data-feed-sound-toggle]")
+    this.soundIconOn = this.el.querySelector("[data-feed-sound-on]")
+    this.soundIconOff = this.el.querySelector("[data-feed-sound-off]")
+
+    this.soundOn = localStorage.getItem("vs:sound") === "on"
+    this.updateSoundUI()
+
     this.onPrev = e => {
       e.preventDefault()
       this.scrollBy(-1)
@@ -45,6 +52,14 @@ const VideoFeed = {
     this.onNext = e => {
       e.preventDefault()
       this.scrollBy(1)
+    }
+
+    this.onSoundToggle = e => {
+      e.preventDefault()
+      this.soundOn = !this.soundOn
+      localStorage.setItem("vs:sound", this.soundOn ? "on" : "off")
+      this.updateSoundUI()
+      this.applySoundToActiveVideo()
     }
 
     this.onKeyDown = e => {
@@ -64,6 +79,7 @@ const VideoFeed = {
     this.onVideoClick = e => {
       const video = e.currentTarget
       if (video.paused) {
+        this.applySoundToVideo(video)
         video.play().catch(() => {})
       } else {
         video.pause()
@@ -78,6 +94,7 @@ const VideoFeed = {
             this.setActiveVideo(video)
           } else {
             video.pause()
+            video.muted = true
           }
         }
       },
@@ -91,6 +108,7 @@ const VideoFeed = {
 
     this.prevButton?.addEventListener("click", this.onPrev)
     this.nextButton?.addEventListener("click", this.onNext)
+    this.soundToggle?.addEventListener("click", this.onSoundToggle)
     window.addEventListener("keydown", this.onKeyDown)
   },
 
@@ -115,10 +133,37 @@ const VideoFeed = {
     const index = item ? this.feedItems.indexOf(item) : -1
     if (index >= 0) this.activeIndex = index
 
+    this.applySoundToVideo(video)
     video.play().catch(() => {})
 
     this.preloadIndex(this.activeIndex + 1)
     this.preloadIndex(this.activeIndex - 1)
+  },
+
+  applySoundToVideo(video) {
+    if (!video) return
+    video.muted = !this.soundOn
+  },
+
+  applySoundToActiveVideo() {
+    const video = this.videos[this.activeIndex]
+    if (!video) return
+
+    this.applySoundToVideo(video)
+
+    if (this.soundOn) {
+      video.play().catch(() => {})
+    }
+  },
+
+  updateSoundUI() {
+    if (this.soundOn) {
+      this.soundIconOn?.classList.remove("hidden")
+      this.soundIconOff?.classList.add("hidden")
+    } else {
+      this.soundIconOn?.classList.add("hidden")
+      this.soundIconOff?.classList.remove("hidden")
+    }
   },
 
   preloadIndex(index) {
@@ -138,6 +183,7 @@ const VideoFeed = {
     this.videos?.forEach(video => video.removeEventListener("click", this.onVideoClick))
     this.prevButton?.removeEventListener("click", this.onPrev)
     this.nextButton?.removeEventListener("click", this.onNext)
+    this.soundToggle?.removeEventListener("click", this.onSoundToggle)
     window.removeEventListener("keydown", this.onKeyDown)
   },
 }

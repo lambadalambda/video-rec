@@ -71,6 +71,22 @@ defmodule VideoSuggestionWeb.FeedLive do
             </button>
           </div>
 
+          <div class="pointer-events-none fixed right-0 bottom-0 z-20 flex flex-col items-center gap-2 p-3">
+            <button
+              type="button"
+              data-feed-sound-toggle
+              aria-label="Toggle sound"
+              class="pointer-events-auto btn btn-circle btn-ghost btn-sm"
+            >
+              <span data-feed-sound-off>
+                <.icon name="hero-speaker-x-mark" class="size-5" />
+              </span>
+              <span data-feed-sound-on class="hidden">
+                <.icon name="hero-speaker-wave" class="size-5" />
+              </span>
+            </button>
+          </div>
+
           <%= for video <- @videos do %>
             <div
               data-feed-item
