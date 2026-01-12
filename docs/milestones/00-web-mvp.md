@@ -2,10 +2,9 @@
 
 Goal: ship a working, mobile-first site before recommendation logic.
 
-- [ ] Authentication (register/login/logout)
-- [ ] Admin bootstrap (first user becomes admin)
-- [ ] Admin-only video upload (store locally; no analysis yet)
-- [ ] Public (or logged-in) feed showing uploaded videos
-- [ ] TikTok-style mobile UX (vertical, full-screen, swipe/scroll)
-- [ ] Basic access control + smoke tests
-
+- [x] Authentication (register/login/logout)
+- [x] Admin bootstrap (first user becomes admin)
+- [x] Admin-only video upload (store locally; no analysis yet)
+- [x] Public (or logged-in) feed showing uploaded videos
+- [x] TikTok-style mobile UX (vertical, full-screen, swipe/scroll)
+- [x] Basic access control + smoke tests
