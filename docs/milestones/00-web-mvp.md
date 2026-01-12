@@ -5,6 +5,8 @@ Goal: ship a working, mobile-first site before recommendation logic.
 - [x] Authentication (register/login/logout)
 - [x] Admin bootstrap (first user becomes admin)
 - [x] Admin-only video upload (store locally; no analysis yet)
+  - [x] Deduplicate by content hash
+  - [x] Bulk upload (ignore duplicates)
 - [x] Public (or logged-in) feed showing uploaded videos
 - [x] TikTok-style mobile UX (vertical, full-screen, swipe/scroll)
   - [x] Fit arbitrary aspect ratios (no cropping)

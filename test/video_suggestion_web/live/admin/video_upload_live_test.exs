@@ -143,4 +143,32 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLiveTest do
 
     assert length(Videos.list_videos(limit: 10)) == 1
   end
+
+  test "admin can upload multiple videos at once and duplicates are ignored", %{conn: conn} do
+    admin = user_fixture()
+    assert admin.is_admin
+
+    {:ok, lv, _html} = live(log_in_user(conn, admin), "/admin/videos/new")
+
+    upload =
+      file_input(lv, "#video_upload_form", :video, [
+        %{name: "first.mp4", content: "a", type: "video/mp4"},
+        %{name: "second.mp4", content: "b", type: "video/mp4"},
+        %{name: "dup.mp4", content: "a", type: "video/mp4"}
+      ])
+
+    assert is_binary(render_upload(upload, "first.mp4"))
+    assert is_binary(render_upload(upload, "second.mp4"))
+    assert is_binary(render_upload(upload, "dup.mp4"))
+
+    lv
+    |> form("#video_upload_form", video: %{"caption" => "hello"})
+    |> render_submit()
+
+    assert_redirect(lv, "/")
+
+    videos = Videos.list_videos(limit: 10)
+    assert length(videos) == 2
+    on_exit(fn -> Enum.each(videos, &File.rm_rf(Uploads.path(&1.storage_key))) end)
+  end
 end
