@@ -25,7 +25,7 @@ defmodule VideoSuggestionWeb.Admin.VideoUploadLive do
       <div class="space-y-6">
         <.header>Upload video</.header>
 
-        <.form for={@form} id="video_upload_form" phx-submit="save">
+        <.form for={@form} id="video_upload_form" phx-submit="save" multipart>
           <.input field={@form[:caption]} type="text" label="Caption" />
 
           <label class="form-control w-full">
