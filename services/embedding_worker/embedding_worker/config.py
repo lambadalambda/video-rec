@@ -29,6 +29,7 @@ class Settings:
     qwen_max_length: int
     qwen_video_fps: float
     qwen_video_max_frames: int
+    qwen_video_target_frames: int
     transcribe_enabled: bool
     whisper_backend: str
     whisper_model: str
@@ -46,6 +47,7 @@ def get_settings() -> Settings:
     qwen_max_length = int(os.environ.get("QWEN_MAX_LENGTH", "8192"))
     qwen_video_fps = float(os.environ.get("QWEN_VIDEO_FPS", "1.0"))
     qwen_video_max_frames = int(os.environ.get("QWEN_VIDEO_MAX_FRAMES", "64"))
+    qwen_video_target_frames = int(os.environ.get("QWEN_VIDEO_TARGET_FRAMES", "10"))
 
     transcribe_enabled = _env_bool("TRANSCRIBE_ENABLED", True)
     whisper_backend = os.environ.get("WHISPER_BACKEND", "openai")
@@ -62,6 +64,7 @@ def get_settings() -> Settings:
         qwen_max_length=qwen_max_length,
         qwen_video_fps=qwen_video_fps,
         qwen_video_max_frames=qwen_video_max_frames,
+        qwen_video_target_frames=qwen_video_target_frames,
         transcribe_enabled=transcribe_enabled,
         whisper_backend=whisper_backend,
         whisper_model=whisper_model,

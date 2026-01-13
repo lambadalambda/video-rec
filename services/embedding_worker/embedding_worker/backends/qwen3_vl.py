@@ -4,6 +4,9 @@ from dataclasses import dataclass
 import gc
 import os
 import re
+import shutil
+import subprocess
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .base import EmbeddingBackend, EmbeddingResult
@@ -25,6 +28,7 @@ class Qwen3VLBackend(EmbeddingBackend):
         max_length: int = 8192,
         video_fps: float = 1.0,
         video_max_frames: int = 64,
+        video_target_frames: int = 10,
         transcribe_enabled: bool = True,
         whisper_backend: str = "openai",
         whisper_model: str = "small",
@@ -38,6 +42,7 @@ class Qwen3VLBackend(EmbeddingBackend):
 
         self._video_fps = video_fps
         self._video_max_frames = video_max_frames
+        self._video_target_frames = video_target_frames
 
         self._transcribe_enabled = transcribe_enabled
         self._whisper_backend = whisper_backend
@@ -66,11 +71,23 @@ class Qwen3VLBackend(EmbeddingBackend):
 
         embedder = self._get_embedder()
 
+        duration_seconds = None
+        if isinstance(self._video_target_frames, int) and self._video_target_frames > 0:
+            duration_seconds = _probe_video_duration_seconds(path)
+
+        video_fps, video_max_frames = _compute_video_sampling_params(
+            duration_seconds=duration_seconds,
+            base_fps=self._video_fps,
+            base_max_frames=self._video_max_frames,
+            target_frames=self._video_target_frames,
+        )
+
         base_input: Dict[str, Any] = {
             "video": path,
             "text": text,
-            "fps": self._video_fps,
-            "max_frames": self._video_max_frames,
+            "fps": video_fps,
+            "max_frames": video_max_frames,
+            "duration_seconds": duration_seconds,
         }
         embeddings = None
         try:
@@ -308,6 +325,7 @@ def _should_torch_cleanup(device: str) -> bool:
 
 def _process_with_adaptive_max_frames(embedder, base_input: Dict[str, Any]):
     max_frames = base_input.get("max_frames")
+    duration_seconds = base_input.get("duration_seconds")
     inputs: List[Dict[str, Any]] = [base_input]
 
     for _attempt in range(6):
@@ -322,7 +340,11 @@ def _process_with_adaptive_max_frames(embedder, base_input: Dict[str, Any]):
                 next_max_frames = max_frames // 2
 
             max_frames = max(1, int(next_max_frames))
-            inputs = [{**base_input, "max_frames": max_frames}]
+            next_input = {**base_input, "max_frames": max_frames}
+            if isinstance(duration_seconds, (int, float)) and duration_seconds > 0:
+                next_input["fps"] = max_frames / float(duration_seconds)
+
+            inputs = [next_input]
 
             embedder.maybe_cleanup()
 
@@ -358,3 +380,99 @@ def _reduce_max_frames_from_error(current_max_frames: int, msg: str) -> int:
         return max(1, current_max_frames - 1)
 
     return candidate
+
+
+def _compute_video_sampling_params(
+    *,
+    duration_seconds: Optional[float],
+    base_fps: float,
+    base_max_frames: int,
+    target_frames: int,
+) -> tuple[float, int]:
+    fps = float(base_fps)
+
+    try:
+        max_frames = int(base_max_frames)
+    except (TypeError, ValueError):
+        max_frames = 1
+
+    if max_frames <= 0:
+        max_frames = 1
+
+    if not isinstance(target_frames, int) or target_frames <= 0:
+        return fps, max_frames
+
+    target = min(max_frames, target_frames)
+
+    if not isinstance(duration_seconds, (int, float)) or duration_seconds <= 0:
+        return fps, target
+
+    return (target / float(duration_seconds)), target
+
+
+def _probe_video_duration_seconds(video_path: str) -> Optional[float]:
+    ffprobe_bin = _find_ffprobe()
+    if ffprobe_bin is None:
+        return None
+
+    if not Path(str(video_path)).exists():
+        return None
+
+    cmd = [
+        ffprobe_bin,
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=nk=1:nw=1",
+        str(video_path),
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+    except Exception:
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    raw = (result.stdout or "").strip()
+    if not raw:
+        return None
+
+    try:
+        duration = float(raw)
+    except ValueError:
+        return None
+
+    if duration <= 0.0:
+        return None
+
+    return duration
+
+
+def _find_ffprobe() -> Optional[str]:
+    override = os.environ.get("FFPROBE_BIN")
+    if override:
+        return override
+
+    found = shutil.which("ffprobe")
+    if found:
+        return found
+
+    ffmpeg_bin = os.environ.get("FFMPEG_BIN")
+    if ffmpeg_bin:
+        try:
+            candidate = str(Path(ffmpeg_bin).with_name("ffprobe"))
+        except Exception:
+            candidate = None
+
+        if candidate and Path(candidate).exists():
+            return candidate
+
+    for candidate in ("/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe"):
+        if Path(candidate).exists():
+            return candidate
+
+    return None

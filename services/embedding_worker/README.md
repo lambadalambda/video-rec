@@ -78,6 +78,16 @@ WHISPER_MODEL=small \
 python -m uvicorn embedding_worker.main:app --reload --port 9001
 ```
 
+### Qwen3-VL video sampling
+
+By default, the worker tries to keep Qwen3-VL video memory usage bounded by sampling ~10 frames across the full video duration:
+
+- `QWEN_VIDEO_TARGET_FRAMES` (default `10`): target frames per video (set to `0` to disable).
+- `QWEN_VIDEO_MAX_FRAMES` (default `64`): hard cap on frames.
+- `QWEN_VIDEO_FPS` (default `1.0`): fallback sampling rate when target frames is disabled (or duration can't be probed).
+
+When target frames is enabled, the worker uses `ffprobe` to estimate the video duration (set `FFPROBE_BIN` if needed). If `ffprobe` is unavailable, it still applies the `QWEN_VIDEO_TARGET_FRAMES` cap.
+
 ## API
 
 - `POST /v1/transcribe/video` → `{storage_key}` → `{transcript}` (requires `requirements-whisper.txt`)

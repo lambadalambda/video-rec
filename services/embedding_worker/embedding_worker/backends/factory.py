@@ -23,6 +23,7 @@ def get_backend(settings: Settings) -> EmbeddingBackend:
             f"{settings.qwen_max_length}:"
             f"{settings.qwen_video_fps}:"
             f"{settings.qwen_video_max_frames}:"
+            f"{settings.qwen_video_target_frames}:"
             f"{settings.transcribe_enabled}:"
             f"{settings.whisper_backend}:"
             f"{settings.whisper_model}:"
@@ -38,6 +39,7 @@ def get_backend(settings: Settings) -> EmbeddingBackend:
                 max_length=settings.qwen_max_length,
                 video_fps=settings.qwen_video_fps,
                 video_max_frames=settings.qwen_video_max_frames,
+                video_target_frames=settings.qwen_video_target_frames,
                 transcribe_enabled=settings.transcribe_enabled,
                 whisper_backend=settings.whisper_backend,
                 whisper_model=settings.whisper_model,
