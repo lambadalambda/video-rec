@@ -44,3 +44,6 @@ npm-debug.log
 
 # Editor tooling
 /.elixir_ls/
+
+# macOS
+.DS_Store

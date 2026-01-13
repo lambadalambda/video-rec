@@ -1,5 +1,5 @@
 /.venv/
 /.pytest_cache/
+/.hf/
 __pycache__/
 *.pyc
-
