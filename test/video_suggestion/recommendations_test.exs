@@ -1,0 +1,101 @@
+defmodule VideoSuggestion.RecommendationsTest do
+  use VideoSuggestion.DataCase
+
+  alias VideoSuggestion.Recommendations
+  alias VideoSuggestion.Repo
+  alias VideoSuggestion.Videos
+  alias VideoSuggestion.Videos.VideoEmbedding
+
+  import VideoSuggestion.AccountsFixtures
+
+  describe "taste_vector_from_favorites/1" do
+    test "returns :empty when the user has no favorites" do
+      user = user_fixture()
+      assert {:error, :empty} = Recommendations.taste_vector_from_favorites(user.id)
+    end
+
+    test "returns the normalized mean of favorited video embeddings" do
+      user = user_fixture()
+
+      {:ok, a} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "a",
+          storage_key: "a.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, b} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "b",
+          storage_key: "b.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      set_embedding!(a.id, [1.0, 0.0])
+      set_embedding!(b.id, [0.0, 1.0])
+
+      assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user.id, a.id)
+      assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user.id, b.id)
+
+      assert {:ok, [x, y]} = Recommendations.taste_vector_from_favorites(user.id)
+      assert_in_delta x, :math.sqrt(0.5), 1.0e-6
+      assert_in_delta y, :math.sqrt(0.5), 1.0e-6
+    end
+  end
+
+  describe "rank_videos_for_user/2" do
+    test "ranks candidates by similarity and excludes favorited videos" do
+      user = user_fixture()
+
+      {:ok, liked} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "liked",
+          storage_key: "liked.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, good} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "good",
+          storage_key: "good.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, bad} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "bad",
+          storage_key: "bad.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      set_embedding!(liked.id, [1.0, 0.0])
+      set_embedding!(good.id, [0.9, 0.1])
+      set_embedding!(bad.id, [-1.0, 0.0])
+
+      assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user.id, liked.id)
+
+      assert {:ok, ranked} = Recommendations.rank_videos_for_user(user.id, limit: 2)
+      good_id = good.id
+      bad_id = bad.id
+      assert [{^good_id, _}, {^bad_id, _}] = ranked
+
+      refute Enum.any?(ranked, fn {id, _score} -> id == liked.id end)
+    end
+  end
+
+  defp set_embedding!(video_id, vector) when is_integer(video_id) and is_list(vector) do
+    embedding = Videos.get_video_embedding!(video_id)
+
+    {:ok, _} =
+      embedding
+      |> VideoEmbedding.changeset(%{vector: vector, version: "test"})
+      |> Repo.update()
+
+    :ok
+  end
+end
