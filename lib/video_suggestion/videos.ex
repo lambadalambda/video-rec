@@ -98,6 +98,42 @@ defmodule VideoSuggestion.Videos do
     Repo.all(query)
   end
 
+  def list_videos_by_ids(ids, opts \\ []) when is_list(ids) do
+    ids = Enum.uniq(ids)
+    current_user_id = Keyword.get(opts, :current_user_id)
+
+    if ids == [] do
+      []
+    else
+      query =
+        from v in Video,
+          where: v.id in ^ids,
+          left_join: f in Favorite,
+          on: f.video_id == v.id,
+          group_by: v.id,
+          order_by: fragment("array_position(?, ?)", ^ids, v.id),
+          select_merge: %{favorites_count: count(f.id)}
+
+      query =
+        if is_integer(current_user_id) do
+          from [v, f] in query,
+            select_merge: %{
+              favorited:
+                fragment(
+                  "COALESCE(BOOL_OR(? = ?), FALSE)",
+                  f.user_id,
+                  ^current_user_id
+                )
+            }
+        else
+          from [v, _f] in query,
+            select_merge: %{favorited: false}
+        end
+
+      Repo.all(query)
+    end
+  end
+
   def get_video!(id), do: Repo.get!(Video, id)
 
   def get_video_embedding!(video_id) when is_integer(video_id) do

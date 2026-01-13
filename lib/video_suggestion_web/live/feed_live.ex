@@ -3,6 +3,7 @@ defmodule VideoSuggestionWeb.FeedLive do
 
   alias VideoSuggestion.Interactions
   alias VideoSuggestion.Interactions.Interaction
+  alias VideoSuggestion.Recommendations
   alias VideoSuggestion.Videos
 
   @page_size 50
@@ -16,18 +17,46 @@ defmodule VideoSuggestionWeb.FeedLive do
         _ -> nil
       end
 
-    {videos, has_more} =
-      Videos.list_videos(limit: @page_size + 1, current_user_id: current_user_id)
-      |> take_page(@page_size)
+    {videos, has_more, mode, extra_assigns} =
+      if is_integer(current_user_id) do
+        case Recommendations.ranked_feed_video_ids_for_user(current_user_id) do
+          {:ok, ranked_ids} when ranked_ids != [] ->
+            {page_ids, has_more} = take_page(ranked_ids, @page_size)
 
-    mode = if has_more, do: :head, else: :full
+            videos =
+              Videos.list_videos_by_ids(page_ids, current_user_id: current_user_id)
+
+            mode = if has_more, do: :head, else: :full
+
+            {videos, has_more, mode,
+             %{feed_order: :ranked, ranked_ids: ranked_ids, ranked_offset: length(page_ids)}}
+
+          _ ->
+            {videos, has_more} =
+              Videos.list_videos(limit: @page_size + 1, current_user_id: current_user_id)
+              |> take_page(@page_size)
+
+            mode = if has_more, do: :head, else: :full
+            {videos, has_more, mode, %{feed_order: :newest}}
+        end
+      else
+        {videos, has_more} =
+          Videos.list_videos(limit: @page_size + 1, current_user_id: current_user_id)
+          |> take_page(@page_size)
+
+        mode = if has_more, do: :head, else: :full
+        {videos, has_more, mode, %{feed_order: :newest}}
+      end
 
     {:ok,
      assign(socket,
        videos: videos,
        has_more: has_more,
        mode: mode,
-       current_user_id: current_user_id
+       current_user_id: current_user_id,
+       ranked_ids: Map.get(extra_assigns, :ranked_ids, []),
+       ranked_offset: Map.get(extra_assigns, :ranked_offset, 0),
+       feed_order: Map.get(extra_assigns, :feed_order, :newest)
      )}
   end
 

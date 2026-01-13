@@ -92,6 +92,36 @@ defmodule VideoSuggestion.Recommendations do
     end
   end
 
+  @spec ranked_feed_video_ids_for_user(integer(), keyword()) ::
+          {:ok, [integer()]}
+          | {:error,
+             :empty
+             | :empty_vector
+             | :dimension_mismatch
+             | :zero_norm}
+  def ranked_feed_video_ids_for_user(user_id, opts \\ []) when is_integer(user_id) do
+    candidate_limit = Keyword.get(opts, :candidate_limit)
+
+    with {:ok, taste} <- taste_vector(user_id, opts) do
+      dim = length(taste)
+
+      candidates =
+        candidate_embeddings(user_id, candidate_limit)
+        |> Enum.reject(fn candidate ->
+          candidate.vector == [] or length(candidate.vector) != dim
+        end)
+
+      if candidates == [] do
+        {:error, :empty}
+      else
+        case Ranking.rank_by_dot(taste, candidates) do
+          {:ok, scored} -> {:ok, Enum.map(scored, fn {candidate, _score} -> candidate.id end)}
+          {:error, reason} -> {:error, reason}
+        end
+      end
+    end
+  end
+
   defp candidate_embeddings(user_id, limit) when is_integer(user_id) and is_integer(limit) do
     from(v in Video,
       join: e in VideoEmbedding,
@@ -101,6 +131,19 @@ defmodule VideoSuggestion.Recommendations do
       where: is_nil(f.id),
       order_by: [desc: v.inserted_at, desc: v.id],
       limit: ^limit,
+      select: %{id: v.id, vector: e.vector}
+    )
+    |> Repo.all()
+  end
+
+  defp candidate_embeddings(user_id, nil) when is_integer(user_id) do
+    from(v in Video,
+      join: e in VideoEmbedding,
+      on: e.video_id == v.id,
+      left_join: f in Favorite,
+      on: f.video_id == v.id and f.user_id == ^user_id,
+      where: is_nil(f.id),
+      order_by: [desc: v.inserted_at, desc: v.id],
       select: %{id: v.id, vector: e.vector}
     )
     |> Repo.all()

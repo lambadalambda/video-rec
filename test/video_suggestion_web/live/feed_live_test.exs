@@ -220,6 +220,71 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
     assert Repo.aggregate(Interaction, :count, :id) == 2
   end
 
+  test "feed uses embeddings for ordering when a signed-in user has taste evidence", %{conn: conn} do
+    user = user_fixture()
+
+    {:ok, seed} =
+      Videos.create_video(%{
+        user_id: user.id,
+        storage_key: "#{System.unique_integer([:positive])}.mp4",
+        caption: "seed",
+        original_filename: "sample.mp4",
+        content_type: "video/mp4",
+        content_hash: :crypto.strong_rand_bytes(32)
+      })
+
+    filler_ids =
+      Enum.map(1..51, fn i ->
+        {:ok, video} =
+          Videos.create_video(%{
+            user_id: user.id,
+            storage_key: "#{System.unique_integer([:positive])}.mp4",
+            caption: "filler-#{i}",
+            original_filename: "sample.mp4",
+            content_type: "video/mp4",
+            content_hash: :crypto.strong_rand_bytes(32)
+          })
+
+        video.id
+      end)
+
+    {:ok, good} =
+      Videos.create_video(%{
+        user_id: user.id,
+        storage_key: "#{System.unique_integer([:positive])}.mp4",
+        caption: "good",
+        original_filename: "sample.mp4",
+        content_type: "video/mp4",
+        content_hash: :crypto.strong_rand_bytes(32)
+      })
+
+    {:ok, bad} =
+      Videos.create_video(%{
+        user_id: user.id,
+        storage_key: "#{System.unique_integer([:positive])}.mp4",
+        caption: "bad",
+        original_filename: "sample.mp4",
+        content_type: "video/mp4",
+        content_hash: :crypto.strong_rand_bytes(32)
+      })
+
+    {:ok, _} = Videos.upsert_video_embedding(seed.id, "test", [1.0, 0.0])
+    {:ok, _} = Videos.upsert_video_embedding(good.id, "test", [0.9, 0.1])
+    {:ok, _} = Videos.upsert_video_embedding(bad.id, "test", [-1.0, 0.0])
+
+    Enum.each(filler_ids, fn id ->
+      {:ok, _} = Videos.upsert_video_embedding(id, "test", [-2.0, 0.0])
+    end)
+
+    assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user.id, seed.id)
+
+    {:ok, _lv, html} = live(log_in_user(conn, user), "/")
+
+    {good_pos, _} = :binary.match(html, "good")
+    {bad_pos, _} = :binary.match(html, "bad")
+    assert good_pos < bad_pos
+  end
+
   test "feed ignores interaction batches for anonymous users", %{conn: conn} do
     user = user_fixture()
 

@@ -68,4 +68,3 @@ defmodule VideoSuggestion.EmbeddingWorkerClient do
       Application.get_env(:video_suggestion, :embedding_worker_req_options, [])
   end
 end
-
