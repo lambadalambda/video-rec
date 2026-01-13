@@ -6,8 +6,12 @@ defmodule VideoSuggestion.Videos do
   import Ecto.Query, warn: false
 
   alias VideoSuggestion.Repo
+  alias VideoSuggestion.Reco.CaptionEmbedding
+  alias VideoSuggestion.Reco.DeterministicEmbedding
   alias VideoSuggestion.Videos.Favorite
   alias VideoSuggestion.Videos.Video
+  alias VideoSuggestion.Videos.VideoEmbedding
+  alias Ecto.Multi
 
   def list_videos(opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
@@ -95,10 +99,22 @@ defmodule VideoSuggestion.Videos do
 
   def get_video!(id), do: Repo.get!(Video, id)
 
+  def get_video_embedding!(video_id) when is_integer(video_id) do
+    Repo.get_by!(VideoEmbedding, video_id: video_id)
+  end
+
   def create_video(attrs) do
-    %Video{}
-    |> Video.changeset(attrs)
-    |> Repo.insert()
+    Multi.new()
+    |> Multi.insert(:video, Video.changeset(%Video{}, attrs))
+    |> Multi.run(:embedding, fn _repo, %{video: video} ->
+      create_video_embedding(video)
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{video: video}} -> {:ok, video}
+      {:error, :video, %Ecto.Changeset{} = changeset, _} -> {:error, changeset}
+      {:error, :embedding, %Ecto.Changeset{} = changeset, _} -> {:error, changeset}
+    end
   end
 
   def content_hash_exists?(content_hash) when is_binary(content_hash) do
@@ -139,5 +155,22 @@ defmodule VideoSuggestion.Videos do
           }
       end
     end)
+  end
+
+  defp create_video_embedding(%Video{} = video) do
+    caption = video.caption || ""
+
+    {vector, version} =
+      case CaptionEmbedding.embed(caption) do
+        {:ok, v} ->
+          {v, "caption_v1"}
+
+        {:error, _} ->
+          {DeterministicEmbedding.from_seed(video.content_hash), "hash_v1"}
+      end
+
+    %VideoEmbedding{}
+    |> VideoEmbedding.changeset(%{video_id: video.id, version: version, vector: vector})
+    |> Repo.insert()
   end
 end

@@ -25,6 +25,23 @@ defmodule VideoSuggestion.VideosTest do
       assert video.original_filename == "myvideo.mp4"
       assert video.content_type == "video/mp4"
     end
+
+    test "creates a deterministic embedding record" do
+      user = user_fixture()
+
+      assert {:ok, video} =
+               Videos.create_video(%{
+                 user_id: user.id,
+                 caption: "Cats and dogs",
+                 storage_key: "embed.mp4",
+                 content_hash: :crypto.strong_rand_bytes(32)
+               })
+
+      embedding = Videos.get_video_embedding!(video.id)
+      assert embedding.video_id == video.id
+      assert embedding.version == "caption_v1"
+      assert length(embedding.vector) == VideoSuggestion.Reco.CaptionEmbedding.dims()
+    end
   end
 
   describe "list_videos/1" do
