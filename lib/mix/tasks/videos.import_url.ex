@@ -29,7 +29,10 @@ defmodule Mix.Tasks.Videos.ImportUrl do
 
   @default_req_options [
     redirect: true,
-    receive_timeout: :timer.minutes(10)
+    receive_timeout: :timer.minutes(10),
+    headers: [
+      {"user-agent", "video-suggestion/0.1 (videos.import_url)"}
+    ]
   ]
 
   alias VideoSuggestion.Accounts.User
