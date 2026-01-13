@@ -25,6 +25,15 @@ pip install -r requirements-qwen.txt
 pip install -r requirements-whisper.txt
 ```
 
+### Use Transformers Whisper (Distil-Whisper)
+
+The worker can also run Whisper via 🤗 Transformers:
+
+```sh
+WHISPER_BACKEND=transformers
+WHISPER_MODEL=distil-whisper/distil-large-v3
+```
+
 ## Run
 
 From the repo root (so `priv/static/uploads` resolves correctly):

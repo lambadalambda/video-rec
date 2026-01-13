@@ -95,12 +95,10 @@ class Qwen3VLBackend(EmbeddingBackend):
         if self._transcriber is not None:
             return self._transcriber
 
-        if self._whisper_backend != "openai":
-            raise NotImplementedError("Only WHISPER_BACKEND=openai is supported right now")
+        from ..transcription import get_whisper_transcriber
 
-        from ..transcription import OpenAIWhisperTranscriber
-
-        self._transcriber = OpenAIWhisperTranscriber(
+        self._transcriber = get_whisper_transcriber(
+            backend=self._whisper_backend,
             model_name=self._whisper_model,
             device=self._whisper_device,
             language=self._whisper_language,

@@ -65,9 +65,10 @@ def transcribe_video(req: VideoTranscribeRequest):
         raise HTTPException(status_code=404, detail="video_not_found")
 
     try:
-        from .transcription import get_openai_whisper_transcriber
+        from .transcription import get_whisper_transcriber
 
-        transcriber = get_openai_whisper_transcriber(
+        transcriber = get_whisper_transcriber(
+            backend=settings.whisper_backend,
             model_name=settings.whisper_model,
             device=settings.whisper_device,
             language=settings.whisper_language,

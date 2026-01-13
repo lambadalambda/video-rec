@@ -102,18 +102,50 @@ def test_transcribe_video_without_whisper_returns_501(tmp_path: Path, monkeypatc
     (uploads / "a.mp4").write_bytes(b"fake-mp4")
 
     monkeypatch.setenv("UPLOADS_DIR", str(uploads))
+    monkeypatch.setenv("WHISPER_BACKEND", "openai")
     get_settings.cache_clear()
 
     # Make this deterministic even if whisper is installed locally.
-    from embedding_worker.transcription import get_openai_whisper_transcriber
+    from embedding_worker.transcription import get_openai_whisper_transcriber, get_whisper_transcriber
 
     get_openai_whisper_transcriber.cache_clear()
+    get_whisper_transcriber.cache_clear()
 
     real_import = builtins.__import__
 
     def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
         if name == "whisper":
             raise ModuleNotFoundError("No module named 'whisper'")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    client = TestClient(app)
+    r = client.post("/v1/transcribe/video", json={"storage_key": "a.mp4"})
+    assert r.status_code == 501
+
+
+def test_transcribe_video_transformers_backend_without_deps_returns_501(tmp_path: Path, monkeypatch):
+    uploads = tmp_path / "uploads"
+    uploads.mkdir(parents=True, exist_ok=True)
+    (uploads / "a.mp4").write_bytes(b"fake-mp4")
+
+    monkeypatch.setenv("UPLOADS_DIR", str(uploads))
+    monkeypatch.setenv("WHISPER_BACKEND", "transformers")
+    monkeypatch.setenv("WHISPER_MODEL", "distil-whisper/distil-large-v3")
+    get_settings.cache_clear()
+
+    from embedding_worker.transcription import get_transformers_whisper_transcriber, get_whisper_transcriber
+
+    get_transformers_whisper_transcriber.cache_clear()
+    get_whisper_transcriber.cache_clear()
+
+    # Make this deterministic even if transformers is installed locally.
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name in ("torch",) or name.startswith("transformers"):
+            raise ModuleNotFoundError(f"No module named {name}")
         return real_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
