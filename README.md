@@ -28,6 +28,24 @@ There’s a small sample `.mp4` in `examples/videos/` you can import:
 mix videos.import examples/videos
 ```
 
+## Embeddings + Transcripts (optional)
+
+This repo includes a small Python embedding worker in `services/embedding_worker/`.
+
+Run the worker (from the repo root so uploads resolve correctly):
+
+```sh
+UPLOADS_DIR=priv/static/uploads \
+python -m uvicorn embedding_worker.main:app --reload --port 9001
+```
+
+Then run:
+
+```sh
+mix videos.transcribe
+mix videos.embed_visual
+```
+
 ## Recommendation Core
 
 Pure, unit-tested modules (see `lib/video_suggestion/reco/`):

@@ -48,6 +48,11 @@ WHISPER_MODEL=small \
 python -m uvicorn embedding_worker.main:app --reload --port 9001
 ```
 
+## API
+
+- `POST /v1/transcribe/video` → `{storage_key}` → `{transcript}` (requires `requirements-whisper.txt`)
+- `POST /v1/embed/video` → `{storage_key, caption?, dims?, transcribe?}` → `{version, dims, embedding, transcript?}`
+
 ## Test
 
 ```sh
