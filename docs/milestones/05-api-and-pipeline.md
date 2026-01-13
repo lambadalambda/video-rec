@@ -11,5 +11,6 @@ Goal: wire the core into a Phoenix app + background pipeline.
 - [ ] interaction ingestion endpoint (batch)
 - [x] Web: feed with cursor pagination
 - [ ] feed API endpoint with cursors
-- [ ] embedding worker interface (HTTP) + job pipeline stubs
+- [x] embedding worker interface (HTTP) (stub backend + Qwen3-VL option)
+- [ ] Oban job pipeline stubs (enqueue → call worker → persist embeddings)
 - [ ] Postgres schemas + `pgvector` migration
