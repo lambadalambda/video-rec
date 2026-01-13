@@ -8,6 +8,7 @@ defmodule VideoSuggestion.Videos do
   alias VideoSuggestion.Repo
   alias VideoSuggestion.Reco.CaptionEmbedding
   alias VideoSuggestion.Reco.DeterministicEmbedding
+  alias VideoSuggestion.Reco.Vector
   alias VideoSuggestion.Videos.Favorite
   alias VideoSuggestion.Videos.Video
   alias VideoSuggestion.Videos.VideoEmbedding
@@ -191,5 +192,52 @@ defmodule VideoSuggestion.Videos do
     %VideoEmbedding{}
     |> VideoEmbedding.changeset(%{video_id: video.id, version: version, vector: vector})
     |> Repo.insert()
+  end
+
+  @spec similar_videos(integer(), keyword()) ::
+          {:ok, %{version: binary(), items: [%{video: Video.t(), score: float()}]}}
+          | {:error, :embedding_missing | :empty_vector}
+  def similar_videos(video_id, opts \\ []) when is_integer(video_id) do
+    limit = Keyword.get(opts, :limit, 20)
+
+    embedding = Repo.get_by(VideoEmbedding, video_id: video_id)
+
+    if is_nil(embedding) do
+      {:error, :embedding_missing}
+    else
+      version = embedding.version
+
+      candidates =
+        from(v in Video,
+          join: e in VideoEmbedding,
+          on: e.video_id == v.id,
+          where: v.id != ^video_id and e.version == ^version,
+          select: {v, e.vector}
+        )
+        |> Repo.all()
+
+      query_vector = embedding.vector
+
+      candidates
+      |> Enum.reduce_while({:ok, []}, fn {video, vector}, {:ok, acc} ->
+        case Vector.dot(query_vector, vector) do
+          {:ok, score} -> {:cont, {:ok, [%{video: video, score: score} | acc]}}
+          {:error, :dimension_mismatch} -> {:cont, {:ok, acc}}
+          {:error, :empty_vector} -> {:halt, {:error, :empty_vector}}
+        end
+      end)
+      |> case do
+        {:ok, scored} ->
+          items =
+            scored
+            |> Enum.sort_by(& &1.score, :desc)
+            |> Enum.take(limit)
+
+          {:ok, %{version: version, items: items}}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
   end
 end

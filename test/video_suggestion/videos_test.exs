@@ -179,6 +179,100 @@ defmodule VideoSuggestion.VideosTest do
     end
   end
 
+  describe "similar videos" do
+    test "similar_videos/2 returns the most similar videos by dot-product" do
+      user = user_fixture()
+
+      {:ok, query} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "query",
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, good} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "good",
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, bad} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "bad",
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, _} = Videos.upsert_video_embedding(query.id, "test", [1.0, 0.0])
+      {:ok, _} = Videos.upsert_video_embedding(good.id, "test", [0.9, 0.1])
+      {:ok, _} = Videos.upsert_video_embedding(bad.id, "test", [-1.0, 0.0])
+
+      assert {:ok, %{version: "test", items: items}} = Videos.similar_videos(query.id, limit: 2)
+      assert length(items) == 2
+
+      assert [%{video: first, score: first_score}, %{video: second, score: second_score}] = items
+      assert first.id == good.id
+      assert second.id == bad.id
+      assert first_score > second_score
+    end
+
+    test "similar_videos/2 returns :embedding_missing when the query has no embedding" do
+      user = user_fixture()
+
+      {:ok, video} =
+        Videos.create_video(%{
+          user_id: user.id,
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      embedding = Videos.get_video_embedding!(video.id)
+      {:ok, _} = Repo.delete(embedding)
+
+      assert {:error, :embedding_missing} = Videos.similar_videos(video.id)
+    end
+
+    test "similar_videos/2 compares against embeddings with the same version" do
+      user = user_fixture()
+
+      {:ok, query} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "query",
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, same_version} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "same",
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, other_version} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "other",
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, _} = Videos.upsert_video_embedding(query.id, "test", [1.0, 0.0])
+      {:ok, _} = Videos.upsert_video_embedding(same_version.id, "test", [1.0, 0.0])
+      {:ok, _} = Videos.upsert_video_embedding(other_version.id, "other", [1.0, 0.0])
+
+      assert {:ok, %{items: items}} = Videos.similar_videos(query.id, limit: 10)
+      assert Enum.any?(items, &(&1.video.id == same_version.id))
+      refute Enum.any?(items, &(&1.video.id == other_version.id))
+    end
+  end
+
   describe "list_videos/1 (favorites metadata)" do
     test "includes favorites_count and favorited for the current user" do
       user1 = user_fixture()
