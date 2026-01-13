@@ -1,6 +1,7 @@
 defmodule VideoSuggestion.RecommendationsTest do
   use VideoSuggestion.DataCase
 
+  alias VideoSuggestion.Interactions
   alias VideoSuggestion.Recommendations
   alias VideoSuggestion.Repo
   alias VideoSuggestion.Videos
@@ -85,6 +86,45 @@ defmodule VideoSuggestion.RecommendationsTest do
       assert [{^good_id, _}, {^bad_id, _}] = ranked
 
       refute Enum.any?(ranked, fn {id, _score} -> id == liked.id end)
+    end
+  end
+
+  describe "taste_vector/1" do
+    test "blends favorites with recent watch interactions" do
+      user = user_fixture()
+
+      {:ok, favorite} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "fav",
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, watched} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "watched",
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      set_embedding!(favorite.id, [1.0, 0.0])
+      set_embedding!(watched.id, [0.0, 1.0])
+
+      assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user.id, favorite.id)
+
+      assert {:ok, _} =
+               Interactions.create_interaction(%{
+                 user_id: user.id,
+                 video_id: watched.id,
+                 event_type: "watch",
+                 watch_ms: 100_000
+               })
+
+      assert {:ok, [x, y]} = Recommendations.taste_vector(user.id)
+      assert x < 0.2
+      assert y > 0.9
     end
   end
 
