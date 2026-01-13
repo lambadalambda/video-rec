@@ -210,6 +210,13 @@ defmodule VideoSuggestionWeb.FeedLive do
         {:ok, %{favorited: favorited, favorites_count: favorites_count}} =
           Videos.toggle_favorite(user_id, video_id)
 
+        _ =
+          Interactions.create_interaction(%{
+            user_id: user_id,
+            video_id: video_id,
+            event_type: if(favorited, do: "favorite", else: "unfavorite")
+          })
+
         videos =
           Enum.map(socket.assigns.videos, fn video ->
             if video.id == video_id do

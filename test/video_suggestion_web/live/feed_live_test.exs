@@ -53,6 +53,8 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
 
     {:ok, lv, _html} = live(log_in_user(conn, user), "/")
 
+    assert Repo.aggregate(Interaction, :count, :id) == 0
+
     assert lv
            |> element(~s([data-favorites-count][data-video-id="#{video.id}"]))
            |> render() =~ ~r/>\s*0\s*</
@@ -62,6 +64,7 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
     |> render_click()
 
     assert Videos.favorites_count(video.id) == 1
+    assert Repo.aggregate(Interaction, :count, :id) == 1
 
     assert lv
            |> element(~s([data-favorites-count][data-video-id="#{video.id}"]))
@@ -72,6 +75,12 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
     |> render_click()
 
     assert Videos.favorites_count(video.id) == 0
+    assert Repo.aggregate(Interaction, :count, :id) == 2
+
+    assert Interaction |> Repo.all() |> Enum.map(& &1.event_type) |> Enum.sort() == [
+             "favorite",
+             "unfavorite"
+           ]
   end
 
   test "feed wraps by rendering clone items when there are multiple videos", %{conn: conn} do
