@@ -339,9 +339,8 @@ def _decoder_prompt_len_for_pipeline(pipeline, generate_kwargs) -> Optional[int]
             prompt_ids = None
 
         # `prompt_ids` excludes the decoder start token, which still counts towards length.
-        if prompt_ids is None:
-            return 1
-        return 1 + len(prompt_ids)
+        if prompt_ids is not None:
+            return 1 + len(prompt_ids)
 
     # Fallback heuristic for older tokenizers (Whisper starts with task/no-timestamps + optional language).
     if generate_kwargs.get("language"):
