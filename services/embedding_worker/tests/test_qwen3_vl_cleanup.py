@@ -18,3 +18,10 @@ def test_should_torch_cleanup_honors_env_override(monkeypatch):
     monkeypatch.setenv("TORCH_CLEANUP", "0")
     assert qwen3_vl._should_torch_cleanup("mps") is False
 
+
+def test_reduce_max_frames_from_error_parses_token_mismatch():
+    msg = (
+        "Mismatch in `video` token count between text and `input_ids`. "
+        "Got ids=[8052] and text=[23040]. Likely due to `truncation='max_length'`."
+    )
+    assert qwen3_vl._reduce_max_frames_from_error(64, msg) == 22

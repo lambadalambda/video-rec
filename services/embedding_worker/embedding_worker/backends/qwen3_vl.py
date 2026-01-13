@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import gc
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 from .base import EmbeddingBackend, EmbeddingResult
@@ -65,17 +66,15 @@ class Qwen3VLBackend(EmbeddingBackend):
 
         embedder = self._get_embedder()
 
-        inputs: List[Dict[str, Any]] = [
-            {
-                "video": path,
-                "text": text,
-                "fps": self._video_fps,
-                "max_frames": self._video_max_frames,
-            }
-        ]
+        base_input: Dict[str, Any] = {
+            "video": path,
+            "text": text,
+            "fps": self._video_fps,
+            "max_frames": self._video_max_frames,
+        }
         embeddings = None
         try:
-            embeddings = embedder.process(inputs, normalize=True)
+            embeddings = _process_with_adaptive_max_frames(embedder, base_input)
             vec = embeddings[0].detach().to("cpu").tolist()
         finally:
             embeddings = None
@@ -305,3 +304,57 @@ def _should_torch_cleanup(device: str) -> bool:
     # Auto mode: on Apple Silicon, the MPS backend often holds onto large cached buffers
     # across requests; freeing them prevents unbounded growth in long-running batch jobs.
     return device == "mps"
+
+
+def _process_with_adaptive_max_frames(embedder, base_input: Dict[str, Any]):
+    max_frames = base_input.get("max_frames")
+    inputs: List[Dict[str, Any]] = [base_input]
+
+    for _attempt in range(6):
+        try:
+            return embedder.process(inputs, normalize=True)
+        except ValueError as e:
+            if not _is_mm_video_token_mismatch(e) or not isinstance(max_frames, int) or max_frames <= 1:
+                raise
+
+            next_max_frames = _reduce_max_frames_from_error(max_frames, str(e))
+            if next_max_frames >= max_frames:
+                next_max_frames = max_frames // 2
+
+            max_frames = max(1, int(next_max_frames))
+            inputs = [{**base_input, "max_frames": max_frames}]
+
+            embedder.maybe_cleanup()
+
+    return embedder.process(inputs, normalize=True)
+
+
+def _is_mm_video_token_mismatch(error: Exception) -> bool:
+    msg = str(error)
+    return "Mismatch in `video` token count between text and `input_ids`" in msg
+
+
+def _reduce_max_frames_from_error(current_max_frames: int, msg: str) -> int:
+    match = re.search(r"Got ids=\[(\d+)\] and text=\[(\d+)\]", msg)
+    if not match:
+        return max(1, current_max_frames // 2)
+
+    try:
+        ids_count = int(match.group(1))
+        text_count = int(match.group(2))
+    except ValueError:
+        return max(1, current_max_frames // 2)
+
+    if ids_count <= 0 or text_count <= 0:
+        return max(1, current_max_frames // 2)
+
+    ratio = ids_count / text_count
+    # Conservative reduction to avoid repeated retries.
+    candidate = int(current_max_frames * ratio)
+
+    if candidate <= 0:
+        return 1
+    if candidate >= current_max_frames:
+        return max(1, current_max_frames - 1)
+
+    return candidate
