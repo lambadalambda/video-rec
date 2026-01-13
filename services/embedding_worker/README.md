@@ -88,6 +88,8 @@ By default, the worker tries to keep Qwen3-VL video memory usage bounded by samp
 
 When target frames is enabled, the worker uses `ffprobe` to estimate the video duration (set `FFPROBE_BIN` if needed). If `ffprobe` is unavailable, it still applies the `QWEN_VIDEO_TARGET_FRAMES` cap.
 
+If `qwen-vl-utils` falls back to the `torchvision` video reader, it will load the full video into memory before sampling. To avoid huge time/RAM spikes, the worker automatically extracts the sampled frames with `ffmpeg` in that case. Override with `QWEN_VIDEO_FRAME_EXTRACTOR=ffmpeg|native|auto`.
+
 ## API
 
 - `POST /v1/transcribe/video` → `{storage_key}` → `{transcript}` (requires `requirements-whisper.txt`)

@@ -87,3 +87,21 @@ def test_compute_video_sampling_params_disables_with_zero_target():
 
     assert fps == 1.0
     assert max_frames == 64
+
+
+def test_format_conversation_preserves_video_frames_list():
+    frames = ["frame-a", "frame-b"]
+
+    conversation = qwen3_vl._Qwen3VLEmbedder._format_conversation(
+        {
+            "video": frames,
+            "text": "hello",
+            "fps": 1.0,
+            "max_frames": 2,
+        }
+    )
+
+    user = conversation[1]
+    video_items = [item for item in user["content"] if item.get("type") == "video"]
+    assert len(video_items) == 1
+    assert video_items[0]["video"] is frames

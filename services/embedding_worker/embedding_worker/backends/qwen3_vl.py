@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import gc
+import importlib.util
 import os
 import re
 import shutil
 import subprocess
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -82,11 +84,25 @@ class Qwen3VLBackend(EmbeddingBackend):
             target_frames=self._video_target_frames,
         )
 
+        video_input: Any = path
+        if _should_extract_video_frames(
+            requested_target_frames=self._video_target_frames,
+            reader_backend=_qwen_video_reader_backend(),
+        ):
+            extracted = _extract_video_frames_ffmpeg(
+                video_path=path,
+                fps=video_fps,
+                max_frames=video_max_frames,
+            )
+            if extracted:
+                video_input = extracted
+
         base_input: Dict[str, Any] = {
-            "video": path,
+            "video": video_input,
             "text": text,
             "fps": video_fps,
             "max_frames": video_max_frames,
+            "sample_fps": video_fps,
             "duration_seconds": duration_seconds,
         }
         embeddings = None
@@ -264,7 +280,12 @@ class _Qwen3VLEmbedder:
         content: List[Dict[str, Any]] = []
 
         if video:
-            video_content = video if str(video).startswith(("http", "oss")) else "file://" + str(video)
+            if isinstance(video, (list, tuple)):
+                video_content = video
+            else:
+                video_content = (
+                    video if str(video).startswith(("http", "oss")) else "file://" + str(video)
+                )
             video_kwargs: Dict[str, Any] = {}
             if fps is not None:
                 video_kwargs["fps"] = fps
@@ -343,6 +364,11 @@ def _process_with_adaptive_max_frames(embedder, base_input: Dict[str, Any]):
             next_input = {**base_input, "max_frames": max_frames}
             if isinstance(duration_seconds, (int, float)) and duration_seconds > 0:
                 next_input["fps"] = max_frames / float(duration_seconds)
+                next_input["sample_fps"] = next_input["fps"]
+
+            video = next_input.get("video")
+            if isinstance(video, (list, tuple)):
+                next_input["video"] = _downsample_frames(video, max_frames)
 
             inputs = [next_input]
 
@@ -476,3 +502,131 @@ def _find_ffprobe() -> Optional[str]:
             return candidate
 
     return None
+
+
+def _qwen_video_reader_backend() -> str:
+    override = os.environ.get("FORCE_QWENVL_VIDEO_READER")
+    if override:
+        return override
+
+    if importlib.util.find_spec("torchcodec") is not None:
+        return "torchcodec"
+    if importlib.util.find_spec("decord") is not None:
+        return "decord"
+    return "torchvision"
+
+
+def _should_extract_video_frames(*, requested_target_frames: int, reader_backend: str) -> bool:
+    if not isinstance(requested_target_frames, int) or requested_target_frames <= 0:
+        return False
+
+    raw = (os.environ.get("QWEN_VIDEO_FRAME_EXTRACTOR") or "auto").strip().lower()
+    if raw in ("ffmpeg", "1", "true", "t", "yes", "y", "on"):
+        return True
+    if raw in ("native", "0", "false", "f", "no", "n", "off"):
+        return False
+
+    # Auto: qwen-vl-utils falls back to torchvision.io.read_video which reads the full
+    # video into memory before sampling, causing large and duration-dependent memory/time spikes.
+    return reader_backend == "torchvision"
+
+
+def _extract_video_frames_ffmpeg(
+    *, video_path: str, fps: float, max_frames: int
+) -> Optional[List[Any]]:
+    ffmpeg_bin = _find_ffmpeg()
+    if ffmpeg_bin is None:
+        return None
+
+    try:
+        from PIL import Image
+    except ModuleNotFoundError:
+        return None
+
+    if max_frames <= 0:
+        return []
+
+    try:
+        fps_value = float(fps)
+    except (TypeError, ValueError):
+        fps_value = 0.0
+
+    if fps_value <= 0.0:
+        fps_value = 1.0
+
+    frames: List[Any] = []
+
+    for i in range(int(max_frames)):
+        timestamp = i / fps_value
+        cmd = [
+            ffmpeg_bin,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            str(timestamp),
+            "-i",
+            str(video_path),
+            "-an",
+            "-sn",
+            "-dn",
+            "-frames:v",
+            "1",
+            "-f",
+            "image2pipe",
+            "-vcodec",
+            "png",
+            "pipe:1",
+        ]
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=30)
+        except Exception:
+            continue
+
+        if result.returncode != 0 or not result.stdout:
+            continue
+
+        try:
+            with BytesIO(result.stdout) as bio:
+                img = Image.open(bio)
+                img.load()
+        except Exception:
+            continue
+
+        frames.append(img)
+
+    if not frames:
+        return None
+
+    return frames
+
+
+def _find_ffmpeg() -> Optional[str]:
+    override = os.environ.get("FFMPEG_BIN")
+    if override:
+        return override
+
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+
+    for candidate in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"):
+        if Path(candidate).exists():
+            return candidate
+
+    return None
+
+
+def _downsample_frames(frames: Any, target_frames: int) -> List[Any]:
+    items = list(frames)
+    if target_frames <= 0:
+        return []
+    if len(items) <= target_frames:
+        return items
+    if target_frames == 1:
+        return [items[0]]
+
+    last = len(items) - 1
+    indices = [int(i * last / (target_frames - 1)) for i in range(target_frames)]
+    return [items[i] for i in indices]
