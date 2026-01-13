@@ -54,4 +54,33 @@ defmodule VideoSuggestion.Reco.RankingTest do
              ]
     end
   end
+
+  describe "mix_exploration/4" do
+    test "interleaves exploration items deterministically (80/20)" do
+      exploit = Enum.map(1..20, &%{id: &1})
+      explore = Enum.map(101..120, &%{id: &1})
+
+      assert {:ok, mixed} = Ranking.mix_exploration(exploit, explore, 10, ratio: 0.2)
+      assert Enum.map(mixed, & &1.id) == [1, 2, 3, 4, 101, 5, 6, 7, 8, 102]
+    end
+
+    test "deduplicates by candidate id across both lists" do
+      exploit = [%{id: 1}, %{id: 2}, %{id: 3}]
+      explore = [%{id: 2}, %{id: 99}]
+
+      assert {:ok, mixed} = Ranking.mix_exploration(exploit, explore, 4, ratio: 0.5)
+      assert Enum.map(mixed, & &1.id) == [1, 2, 3, 99]
+    end
+
+    test "falls back to exploitation when exploration is empty" do
+      exploit = Enum.map(1..5, &%{id: &1})
+      assert {:ok, mixed} = Ranking.mix_exploration(exploit, [], 3, ratio: 0.2)
+      assert Enum.map(mixed, & &1.id) == [1, 2, 3]
+    end
+
+    test "validates ratio" do
+      assert {:error, :invalid_ratio} = Ranking.mix_exploration([], [], 1, ratio: -0.1)
+      assert {:error, :invalid_ratio} = Ranking.mix_exploration([], [], 1, ratio: 1.1)
+    end
+  end
 end

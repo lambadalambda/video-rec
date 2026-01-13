@@ -57,6 +57,84 @@ defmodule VideoSuggestion.Reco.Ranking do
     |> maybe_cap_creator(max_per_creator)
   end
 
+  @spec mix_exploration([map()], [map()], non_neg_integer(), keyword()) ::
+          {:ok, [map()]} | {:error, :invalid_k | :invalid_ratio}
+  def mix_exploration(exploit, explore, k, opts \\ [])
+
+  def mix_exploration(_exploit, _explore, k, _opts) when not (is_integer(k) and k >= 0) do
+    {:error, :invalid_k}
+  end
+
+  def mix_exploration(exploit, explore, k, opts) when is_list(exploit) and is_list(explore) do
+    ratio = Keyword.get(opts, :ratio, 0.2)
+
+    if not (is_number(ratio) and ratio >= 0 and ratio <= 1) do
+      {:error, :invalid_ratio}
+    else
+      explore_every =
+        cond do
+          ratio == 0 -> :never
+          ratio == 1 -> 1
+          true -> max(2, round(1.0 / ratio))
+        end
+
+      {:ok, do_mix_exploration(exploit, explore, k, explore_every, 1, MapSet.new(), [])}
+    end
+  end
+
+  defp do_mix_exploration(_exploit, _explore, 0, _every, _slot, _seen, acc_rev),
+    do: Enum.reverse(acc_rev)
+
+  defp do_mix_exploration([], [], _k, _every, _slot, _seen, acc_rev),
+    do: Enum.reverse(acc_rev)
+
+  defp do_mix_exploration(exploit, explore, k, every, slot, seen, acc_rev) do
+    choose_explore = every != :never and rem(slot, every) == 0
+
+    {picked, exploit, explore, seen} =
+      if choose_explore do
+        case take_unique(explore, seen) do
+          {nil, explore, seen} ->
+            case take_unique(exploit, seen) do
+              {nil, exploit, seen} -> {nil, exploit, explore, seen}
+              {picked, exploit, seen} -> {picked, exploit, explore, seen}
+            end
+
+          {picked, explore, seen} ->
+            {picked, exploit, explore, seen}
+        end
+      else
+        case take_unique(exploit, seen) do
+          {nil, exploit, seen} ->
+            case take_unique(explore, seen) do
+              {nil, explore, seen} -> {nil, exploit, explore, seen}
+              {picked, explore, seen} -> {picked, exploit, explore, seen}
+            end
+
+          {picked, exploit, seen} ->
+            {picked, exploit, explore, seen}
+        end
+      end
+
+    if is_nil(picked) do
+      Enum.reverse(acc_rev)
+    else
+      do_mix_exploration(exploit, explore, k - 1, every, slot + 1, seen, [picked | acc_rev])
+    end
+  end
+
+  defp take_unique([], seen), do: {nil, [], seen}
+
+  defp take_unique([candidate | rest], seen) do
+    key = Map.get(candidate, :id) || candidate
+
+    if MapSet.member?(seen, key) do
+      take_unique(rest, seen)
+    else
+      {candidate, rest, MapSet.put(seen, key)}
+    end
+  end
+
   defp maybe_cap_creator(candidates, nil), do: candidates
 
   defp maybe_cap_creator(candidates, max_per_creator)
