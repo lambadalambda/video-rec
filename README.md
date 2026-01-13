@@ -20,6 +20,14 @@ mix phx.server
 
 Open `http://localhost:5000`, register at `/users/register`, then use `/dev/mailbox` (dev only) to grab the login link. The first registered user is admin; upload at `/admin/videos/new`.
 
+## Example videos
+
+There’s a small sample `.mp4` in `examples/videos/` you can import:
+
+```sh
+mix videos.import examples/videos
+```
+
 ## Recommendation Core
 
 Pure, unit-tested modules (see `lib/video_suggestion/reco/`):
