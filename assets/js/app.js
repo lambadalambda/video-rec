@@ -36,6 +36,10 @@ const VideoFeed = {
     this.pendingJumpToStart = false
     this.observedVideos = new Set()
 
+    this.interactionQueue = []
+    this.interactionFlushTimer = null
+    this.activeWatch = null
+
     this.prevButton = this.el.querySelector("[data-feed-prev]")
     this.nextButton = this.el.querySelector("[data-feed-next]")
 
@@ -115,6 +119,13 @@ const VideoFeed = {
       {root: this.el, threshold: [0, 0.75, 1]},
     )
 
+    this.onVisibilityChange = () => {
+      if (document.hidden) {
+        this.finalizeActiveWatch()
+        this.flushInteractionQueue()
+      }
+    }
+
     this.syncElements()
     this.observeVideos()
 
@@ -128,6 +139,7 @@ const VideoFeed = {
     this.playToggle?.addEventListener("click", this.onPlayToggle)
     this.soundToggle?.addEventListener("click", this.onSoundToggle)
     window.addEventListener("keydown", this.onKeyDown)
+    document.addEventListener("visibilitychange", this.onVisibilityChange)
   },
 
   updated() {
@@ -248,12 +260,17 @@ const VideoFeed = {
     const index = item ? this.feedItems.indexOf(item) : -1
     if (index < 0) return
 
+    const changed = index !== this.activeIndex
+    if (changed) {
+      this.finalizeActiveWatch()
+    }
+
     const clone = item.dataset.feedClone
     if (clone === "prev") {
       const targetIndex = this.lastRealIndex
       this.userPaused = false
       this.updatePlayUI()
-      this.activeIndex = targetIndex
+      this.activeIndex = index
       video.pause()
       video.muted = true
       this.scrollToIndex(targetIndex, "auto")
@@ -264,19 +281,22 @@ const VideoFeed = {
       const targetIndex = this.firstRealIndex
       this.userPaused = false
       this.updatePlayUI()
-      this.activeIndex = targetIndex
+      this.activeIndex = index
       video.pause()
       video.muted = true
       this.scrollToIndex(targetIndex, "auto")
       return
     }
 
-    const changed = index !== this.activeIndex
     this.activeIndex = index
     this.activeVideoEl = video
     if (changed) {
       this.userPaused = false
       this.updatePlayUI()
+      this.queueInteraction({type: "impression", video_id: this.videoIdForItem(item)})
+
+      const videoId = this.videoIdForItem(item)
+      this.activeWatch = videoId ? {videoId, startSeconds: video.currentTime || 0} : null
     }
 
     this.applySoundToVideo(video)
@@ -336,7 +356,64 @@ const VideoFeed = {
     video.preload = "auto"
     video.load()
   },
+
+  videoIdForItem(item) {
+    const el = item?.querySelector("[data-video-id]")
+    const id = el?.dataset?.videoId
+    if (!id) return null
+
+    const parsed = parseInt(id, 10)
+    return Number.isFinite(parsed) ? parsed : null
+  },
+
+  queueInteraction(event) {
+    if (!event || !event.type || !event.video_id) return
+
+    this.interactionQueue.push(event)
+
+    if (this.interactionQueue.length >= 10) {
+      this.flushInteractionQueue()
+      return
+    }
+
+    this.scheduleInteractionFlush()
+  },
+
+  scheduleInteractionFlush() {
+    if (this.interactionFlushTimer) return
+
+    this.interactionFlushTimer = window.setTimeout(() => {
+      this.interactionFlushTimer = null
+      this.flushInteractionQueue()
+    }, 1000)
+  },
+
+  flushInteractionQueue() {
+    if (!this.interactionQueue.length) return
+
+    const events = this.interactionQueue.splice(0, this.interactionQueue.length)
+    this.pushEvent("interaction-batch", {events})
+  },
+
+  finalizeActiveWatch() {
+    if (!this.activeWatch) return
+
+    const {videoId, startSeconds} = this.activeWatch
+    const video = this.activeVideoEl
+    this.activeWatch = null
+
+    if (!video || !Number.isFinite(videoId)) return
+
+    const endSeconds = video.currentTime || 0
+    const watchMs = Math.max(0, Math.round((endSeconds - startSeconds) * 1000))
+
+    if (watchMs > 0) {
+      this.queueInteraction({type: "watch", video_id: videoId, watch_ms: watchMs})
+    }
+  },
   destroyed() {
+    this.finalizeActiveWatch()
+    this.flushInteractionQueue()
     this.observer?.disconnect()
 
     this.prevButton?.removeEventListener("click", this.onPrev)
@@ -344,6 +421,7 @@ const VideoFeed = {
     this.playToggle?.removeEventListener("click", this.onPlayToggle)
     this.soundToggle?.removeEventListener("click", this.onSoundToggle)
     window.removeEventListener("keydown", this.onKeyDown)
+    document.removeEventListener("visibilitychange", this.onVisibilityChange)
   },
 }
 
