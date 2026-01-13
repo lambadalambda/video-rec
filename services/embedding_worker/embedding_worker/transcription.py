@@ -85,6 +85,10 @@ class TransformersWhisperTranscriber:
         if self._language:
             generate_kwargs["language"] = self._language
 
+        max_new_tokens = _default_max_new_tokens_for_pipeline(pipeline)
+        if max_new_tokens is not None:
+            generate_kwargs["max_new_tokens"] = max_new_tokens
+
         tmp_audio_path = None
         audio_path = path
 
@@ -251,6 +255,48 @@ def _run_asr_pipeline(pipeline, audio_path: str, generate_kwargs):
         if "return_timestamps" in message and "long-form generation" in message:
             return pipeline(audio_path, generate_kwargs=generate_kwargs, return_timestamps=True)
         raise
+
+
+def _default_max_new_tokens_for_pipeline(pipeline) -> Optional[int]:
+    override = os.environ.get("WHISPER_MAX_NEW_TOKENS")
+    if override:
+        try:
+            value = int(override)
+        except ValueError:
+            value = None
+
+        if value is not None and value > 0:
+            return value
+
+    model = getattr(pipeline, "model", None)
+    if model is None:
+        return None
+
+    generation_config = getattr(model, "generation_config", None)
+    config = getattr(model, "config", None)
+
+    max_target_positions = getattr(config, "max_target_positions", None)
+    if not isinstance(max_target_positions, int) or max_target_positions <= 0:
+        return None
+
+    # Some Whisper model configs (notably openai/whisper-large-v3-turbo) ship with a very low
+    # generation max_length, which truncates transcriptions to a handful of tokens. When we
+    # detect a suspiciously-low max length, use the model's maximum target positions instead.
+    gen_max_length = getattr(generation_config, "max_length", None)
+    cfg_max_length = getattr(config, "max_length", None)
+
+    suspected_max_length = None
+    for candidate in (gen_max_length, cfg_max_length):
+        if isinstance(candidate, int):
+            if suspected_max_length is None:
+                suspected_max_length = candidate
+            else:
+                suspected_max_length = min(suspected_max_length, candidate)
+
+    if suspected_max_length is not None and suspected_max_length < 64:
+        return max_target_positions
+
+    return None
 
 
 def _find_ffmpeg() -> Optional[str]:

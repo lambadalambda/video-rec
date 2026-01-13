@@ -37,6 +37,10 @@ WHISPER_MODEL=distil-whisper/distil-large-v3
 When using the Transformers backend with video files (e.g. `.mp4`), the worker extracts audio
 with `ffmpeg`, so make sure it is installed and available on `PATH` (or set `FFMPEG_BIN`).
 
+Some Whisper model repos (notably `openai/whisper-large-v3-turbo`) ship with a very low default
+generation `max_length`, which truncates transcripts. The worker detects this and sets
+`max_new_tokens` automatically; override with `WHISPER_MAX_NEW_TOKENS` if needed.
+
 ## Run
 
 From the repo root (so `priv/static/uploads` resolves correctly):
