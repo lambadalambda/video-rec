@@ -1,6 +1,7 @@
 defmodule VideoSuggestion.VideosTest do
   use VideoSuggestion.DataCase
 
+  alias VideoSuggestion.Repo
   alias VideoSuggestion.Videos
 
   import VideoSuggestion.AccountsFixtures
@@ -131,6 +132,50 @@ defmodule VideoSuggestion.VideosTest do
       assert {:ok, updated} = Videos.set_video_transcript(video.id, "hello world")
       assert updated.transcript == "hello world"
       assert Videos.get_video!(video.id).transcript == "hello world"
+    end
+  end
+
+  describe "video_embeddings" do
+    test "upsert_video_embedding/3 updates the existing embedding record" do
+      user = user_fixture()
+
+      assert {:ok, video} =
+               Videos.create_video(%{
+                 user_id: user.id,
+                 storage_key: "#{System.unique_integer([:positive])}.mp4",
+                 content_hash: :crypto.strong_rand_bytes(32)
+               })
+
+      embedding = Videos.get_video_embedding!(video.id)
+      assert embedding.version in ["caption_v1", "hash_v1"]
+
+      assert {:ok, _embedding} =
+               Videos.upsert_video_embedding(video.id, "qwen3_vl_v1", [0.0, 1.0])
+
+      embedding = Videos.get_video_embedding!(video.id)
+      assert embedding.version == "qwen3_vl_v1"
+      assert embedding.vector == [0.0, 1.0]
+    end
+
+    test "upsert_video_embedding/3 inserts if the embedding record is missing" do
+      user = user_fixture()
+
+      assert {:ok, video} =
+               Videos.create_video(%{
+                 user_id: user.id,
+                 storage_key: "#{System.unique_integer([:positive])}.mp4",
+                 content_hash: :crypto.strong_rand_bytes(32)
+               })
+
+      embedding = Videos.get_video_embedding!(video.id)
+      {:ok, _} = Repo.delete(embedding)
+
+      assert {:ok, _embedding} =
+               Videos.upsert_video_embedding(video.id, "qwen3_vl_v1", [0.25, 0.75])
+
+      embedding = Videos.get_video_embedding!(video.id)
+      assert embedding.version == "qwen3_vl_v1"
+      assert embedding.vector == [0.25, 0.75]
     end
   end
 

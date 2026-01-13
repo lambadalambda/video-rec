@@ -103,6 +103,16 @@ defmodule VideoSuggestion.Videos do
     Repo.get_by!(VideoEmbedding, video_id: video_id)
   end
 
+  def upsert_video_embedding(video_id, version, vector)
+      when is_integer(video_id) and is_binary(version) and is_list(vector) do
+    %VideoEmbedding{}
+    |> VideoEmbedding.changeset(%{video_id: video_id, version: version, vector: vector})
+    |> Repo.insert(
+      conflict_target: :video_id,
+      on_conflict: {:replace, [:version, :vector, :updated_at]}
+    )
+  end
+
   def set_video_transcript(video_id, transcript)
       when is_integer(video_id) and is_binary(transcript) do
     video = get_video!(video_id)
