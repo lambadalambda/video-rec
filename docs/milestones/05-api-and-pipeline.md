@@ -5,7 +5,7 @@ Goal: wire the core into a Phoenix app + background pipeline.
 - [ ] Phoenix app scaffold (web/API)
 - [ ] video upload + “complete” endpoint
 - [x] Postgres schema: `interactions` table
-- [x] LiveView interaction logging (impression + watch time)
+- [x] LiveView interaction logging (impression + watch time + favorite/unfavorite)
 - [ ] interaction ingestion endpoint (batch)
 - [ ] feed endpoint with cursors
 - [ ] embedding worker interface (HTTP) + job pipeline stubs
