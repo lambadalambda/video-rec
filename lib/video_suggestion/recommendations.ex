@@ -101,6 +101,8 @@ defmodule VideoSuggestion.Recommendations do
              | :zero_norm}
   def ranked_feed_video_ids_for_user(user_id, opts \\ []) when is_integer(user_id) do
     candidate_limit = Keyword.get(opts, :candidate_limit)
+    diversify_pool_size = Keyword.get(opts, :diversify_pool_size, 200)
+    diversify_lambda = Keyword.get(opts, :diversify_lambda, 0.7)
 
     with {:ok, taste} <- taste_vector(user_id, opts) do
       dim = length(taste)
@@ -115,8 +117,32 @@ defmodule VideoSuggestion.Recommendations do
         {:error, :empty}
       else
         case Ranking.rank_by_dot(taste, candidates) do
-          {:ok, scored} -> {:ok, Enum.map(scored, fn {candidate, _score} -> candidate.id end)}
-          {:error, reason} -> {:error, reason}
+          {:ok, scored} ->
+            ranked = Enum.map(scored, fn {candidate, _score} -> candidate end)
+
+            {pool, rest} =
+              if is_integer(diversify_pool_size) and diversify_pool_size > 0 do
+                Enum.split(ranked, diversify_pool_size)
+              else
+                {[], ranked}
+              end
+
+            ranked =
+              case pool do
+                [] ->
+                  ranked
+
+                pool ->
+                  case Ranking.mmr(taste, pool, length(pool), lambda: diversify_lambda) do
+                    {:ok, diverse} -> diverse ++ rest
+                    {:error, _reason} -> ranked
+                  end
+              end
+
+            {:ok, Enum.map(ranked, & &1.id)}
+
+          {:error, reason} ->
+            {:error, reason}
         end
       end
     end

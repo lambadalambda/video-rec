@@ -89,6 +89,59 @@ defmodule VideoSuggestion.RecommendationsTest do
     end
   end
 
+  describe "ranked_feed_video_ids_for_user/2" do
+    test "applies MMR diversity to the top of the ranked feed" do
+      user = user_fixture()
+
+      {:ok, liked} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "liked",
+          storage_key: "liked.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, a} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "a",
+          storage_key: "a.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, b} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "b",
+          storage_key: "b.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, c} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "c",
+          storage_key: "c.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      set_embedding!(liked.id, [1.0, 0.0])
+      set_embedding!(a.id, [1.0, 0.0])
+      set_embedding!(b.id, [0.99, 0.01])
+      set_embedding!(c.id, [0.0, 1.0])
+
+      assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user.id, liked.id)
+
+      assert {:ok, ids} =
+               Recommendations.ranked_feed_video_ids_for_user(user.id,
+                 diversify_lambda: 0.2,
+                 diversify_pool_size: 3
+               )
+
+      assert ids == [a.id, c.id, b.id]
+    end
+  end
+
   describe "taste_vector/1" do
     test "blends favorites with recent watch interactions" do
       user = user_fixture()
