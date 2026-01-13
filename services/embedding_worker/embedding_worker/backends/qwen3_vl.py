@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import gc
+import os
 from typing import Any, Dict, List, Optional
 
 from .base import EmbeddingBackend, EmbeddingResult
@@ -71,9 +73,13 @@ class Qwen3VLBackend(EmbeddingBackend):
                 "max_frames": self._video_max_frames,
             }
         ]
-        embeddings = embedder.process(inputs, normalize=True)
-
-        vec = embeddings[0].tolist()
+        embeddings = None
+        try:
+            embeddings = embedder.process(inputs, normalize=True)
+            vec = embeddings[0].detach().to("cpu").tolist()
+        finally:
+            embeddings = None
+            embedder.maybe_cleanup()
 
         if dims is not None and dims > 0 and dims < len(vec):
             vec = vec[:dims]
@@ -154,7 +160,37 @@ class _Qwen3VLEmbedder:
         if not device or device == "auto":
             device = _default_device(torch)
 
+        self._device = device
         self._model.to(device)
+
+    def maybe_cleanup(self):
+        if not _should_torch_cleanup(self._device):
+            return
+
+        gc.collect()
+
+        torch = self._torch
+
+        if self._device == "cuda" and hasattr(torch, "cuda"):
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+
+            ipc_collect = getattr(torch.cuda, "ipc_collect", None)
+            if callable(ipc_collect):
+                try:
+                    ipc_collect()
+                except Exception:
+                    pass
+
+        if self._device == "mps" and hasattr(torch, "mps"):
+            empty_cache = getattr(torch.mps, "empty_cache", None)
+            if callable(empty_cache):
+                try:
+                    empty_cache()
+                except Exception:
+                    pass
 
     def process(self, inputs: List[Dict[str, Any]], normalize: bool = True):
         import torch.nn.functional as F
@@ -257,3 +293,15 @@ def _default_device(torch) -> str:
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return "mps"
     return "cpu"
+
+
+def _should_torch_cleanup(device: str) -> bool:
+    raw = (os.environ.get("TORCH_CLEANUP") or "auto").strip().lower()
+    if raw in ("1", "true", "t", "yes", "y", "on"):
+        return True
+    if raw in ("0", "false", "f", "no", "n", "off"):
+        return False
+
+    # Auto mode: on Apple Silicon, the MPS backend often holds onto large cached buffers
+    # across requests; freeing them prevents unbounded growth in long-running batch jobs.
+    return device == "mps"
