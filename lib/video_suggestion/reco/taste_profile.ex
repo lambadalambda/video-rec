@@ -7,12 +7,14 @@ defmodule VideoSuggestion.Reco.TasteProfile do
 
   defstruct long_sum: nil,
             long_weight: 0.0,
-            session: nil
+            session: nil,
+            session_weight: 0.0
 
   @type t :: %__MODULE__{
           long_sum: [float()] | nil,
           long_weight: float(),
-          session: [float()] | nil
+          session: [float()] | nil,
+          session_weight: float()
         }
 
   def new, do: %__MODULE__{}
@@ -71,20 +73,38 @@ defmodule VideoSuggestion.Reco.TasteProfile do
     end
   end
 
+  def update_session!(%__MODULE__{} = profile, vector, alpha, weight) do
+    case update_session(profile, vector, alpha, weight) do
+      {:ok, profile} -> profile
+      {:error, reason} -> raise ArgumentError, "update_session failed: #{inspect(reason)}"
+    end
+  end
+
   @spec update_session(t(), Vector.t(), number()) ::
           {:ok, t()}
           | {:error, :empty_vector | :dimension_mismatch | :invalid_alpha | :zero_norm}
   def update_session(%__MODULE__{} = profile, vector, alpha \\ 0.2) when is_list(vector) do
+    update_session(profile, vector, alpha, 1.0)
+  end
+
+  @spec update_session(t(), Vector.t(), number(), number()) ::
+          {:ok, t()}
+          | {:error,
+             :empty_vector | :dimension_mismatch | :invalid_alpha | :invalid_weight | :zero_norm}
+  def update_session(%__MODULE__{} = profile, vector, alpha, weight) when is_list(vector) do
     cond do
       not (is_number(alpha) and alpha >= 0 and alpha <= 1) ->
         {:error, :invalid_alpha}
+
+      not (is_number(weight) and weight > 0) ->
+        {:error, :invalid_weight}
 
       vector == [] ->
         {:error, :empty_vector}
 
       is_nil(profile.session) ->
         with {:ok, v} <- Vector.normalize(vector) do
-          {:ok, %{profile | session: v}}
+          {:ok, %{profile | session: v, session_weight: profile.session_weight + weight}}
         end
 
       length(profile.session) != length(vector) ->
@@ -98,7 +118,7 @@ defmodule VideoSuggestion.Reco.TasteProfile do
             end)
 
           with {:ok, session} <- Vector.normalize(blended) do
-            {:ok, %{profile | session: session}}
+            {:ok, %{profile | session: session, session_weight: profile.session_weight + weight}}
           end
         end
     end
@@ -107,6 +127,45 @@ defmodule VideoSuggestion.Reco.TasteProfile do
   @spec session_vector(t()) :: {:ok, [float()]} | {:error, :empty}
   def session_vector(%__MODULE__{session: nil}), do: {:error, :empty}
   def session_vector(%__MODULE__{session: session}), do: {:ok, session}
+
+  @spec evidence_gamma(t(), keyword()) ::
+          {:ok, float()} | {:error, :empty | :invalid_prior | :invalid_max_gamma}
+  def evidence_gamma(%__MODULE__{} = profile, opts \\ []) do
+    prior = Keyword.get(opts, :prior, 3.0)
+    max_gamma = Keyword.get(opts, :max_gamma, 1.0)
+
+    cond do
+      not (is_number(prior) and prior >= 0) ->
+        {:error, :invalid_prior}
+
+      not (is_number(max_gamma) and max_gamma >= 0 and max_gamma <= 1) ->
+        {:error, :invalid_max_gamma}
+
+      is_nil(profile.long_sum) and is_nil(profile.session) ->
+        {:error, :empty}
+
+      true ->
+        denom = profile.session_weight + profile.long_weight + prior
+
+        gamma =
+          if denom <= 0 do
+            0.0
+          else
+            profile.session_weight / denom
+          end
+
+        {:ok, min(gamma, max_gamma) * 1.0}
+    end
+  end
+
+  @spec blended_vector(t()) ::
+          {:ok, [float()]}
+          | {:error, :empty | :invalid_gamma | :empty_vector | :dimension_mismatch | :zero_norm}
+  def blended_vector(%__MODULE__{} = profile) do
+    with {:ok, gamma} <- evidence_gamma(profile) do
+      blended_vector(profile, gamma)
+    end
+  end
 
   @spec blended_vector(t(), number()) ::
           {:ok, [float()]}

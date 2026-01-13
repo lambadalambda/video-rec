@@ -41,4 +41,32 @@ defmodule VideoSuggestion.Reco.TasteProfileTest do
       assert_in_delta y, :math.sqrt(2) / 2, 1.0e-12
     end
   end
+
+  describe "evidence_gamma/2 and blended_vector/1" do
+    test "errors on empty profiles" do
+      assert {:error, :empty} = TasteProfile.evidence_gamma(TasteProfile.new())
+      assert {:error, :empty} = TasteProfile.blended_vector(TasteProfile.new())
+    end
+
+    test "uses a prior so the first session signal does not dominate" do
+      profile =
+        TasteProfile.new()
+        |> TasteProfile.update_session!([1, 0], 1.0)
+
+      assert {:ok, gamma} = TasteProfile.evidence_gamma(profile, prior: 3.0)
+      assert_in_delta gamma, 0.25, 1.0e-12
+    end
+
+    test "computes an evidence-weighted gamma and uses it for blending" do
+      profile =
+        TasteProfile.new()
+        |> TasteProfile.update_long!([1, 0])
+        |> TasteProfile.update_long!([1, 0])
+        |> TasteProfile.update_session!([0, 1], 1.0)
+
+      assert {:ok, gamma} = TasteProfile.evidence_gamma(profile, prior: 3.0)
+      assert_in_delta gamma, 1.0 / 6.0, 1.0e-12
+      assert TasteProfile.blended_vector(profile) == TasteProfile.blended_vector(profile, gamma)
+    end
+  end
 end
