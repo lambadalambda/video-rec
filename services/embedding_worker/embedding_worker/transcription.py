@@ -80,7 +80,16 @@ class TransformersWhisperTranscriber:
         if self._language:
             generate_kwargs["language"] = self._language
 
-        result = pipeline(path, generate_kwargs=generate_kwargs)
+        try:
+            result = pipeline(path, generate_kwargs=generate_kwargs)
+        except ValueError as e:
+            # For audio > ~30s, Whisper switches to long-form generation which requires timestamp tokens.
+            # In that case, retry with timestamps enabled and just return the combined text.
+            message = str(e)
+            if "return_timestamps" in message and "long-form generation" in message:
+                result = pipeline(path, generate_kwargs=generate_kwargs, return_timestamps=True)
+            else:
+                raise
 
         if isinstance(result, dict):
             text = (result.get("text") or "").strip()
