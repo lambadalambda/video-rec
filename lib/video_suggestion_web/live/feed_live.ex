@@ -1,6 +1,8 @@
 defmodule VideoSuggestionWeb.FeedLive do
   use VideoSuggestionWeb, :live_view
 
+  alias VideoSuggestion.Interactions
+  alias VideoSuggestion.Interactions.Interaction
   alias VideoSuggestion.Videos
 
   @page_size 50
@@ -225,6 +227,26 @@ defmodule VideoSuggestionWeb.FeedLive do
   end
 
   @impl true
+  def handle_event("interaction-batch", %{"events" => events}, socket) when is_list(events) do
+    case socket.assigns.current_scope do
+      %{user: %{id: user_id}} ->
+        Enum.each(events, fn event ->
+          case interaction_attrs(event, user_id) do
+            {:ok, attrs} -> _ = Interactions.create_interaction(attrs)
+            {:error, _} -> :ok
+          end
+        end)
+
+        {:noreply, socket}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("interaction-batch", _params, socket), do: {:noreply, socket}
+
+  @impl true
   def handle_event("load-more", _params, socket) do
     cond do
       socket.assigns.mode != :head or socket.assigns.has_more == false ->
@@ -275,6 +297,42 @@ defmodule VideoSuggestionWeb.FeedLive do
 
     {:noreply, assign(socket, videos: videos, has_more: has_more, mode: mode)}
   end
+
+  defp interaction_attrs(event, user_id) when is_map(event) and is_integer(user_id) do
+    type = Map.get(event, "type") || Map.get(event, :type)
+    video_id = Map.get(event, "video_id") || Map.get(event, :video_id)
+    watch_ms = Map.get(event, "watch_ms") || Map.get(event, :watch_ms)
+
+    with {:ok, video_id} <- cast_int(video_id),
+         {:ok, watch_ms} <- cast_optional_int(watch_ms),
+         true <- is_binary(type),
+         true <- type in Interaction.event_types() do
+      attrs = %{user_id: user_id, video_id: video_id, event_type: type}
+      attrs = if is_integer(watch_ms), do: Map.put(attrs, :watch_ms, watch_ms), else: attrs
+      {:ok, attrs}
+    else
+      _ -> {:error, :invalid_event}
+    end
+  end
+
+  defp interaction_attrs(_event, _user_id), do: {:error, :invalid_event}
+
+  defp cast_optional_int(nil), do: {:ok, nil}
+
+  defp cast_optional_int(value) do
+    cast_int(value)
+  end
+
+  defp cast_int(value) when is_integer(value), do: {:ok, value}
+
+  defp cast_int(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} -> {:ok, int}
+      _ -> {:error, :invalid_int}
+    end
+  end
+
+  defp cast_int(_value), do: {:error, :invalid_int}
 
   defp take_page(videos, page_size) when is_list(videos) and is_integer(page_size) do
     {page, rest} = Enum.split(videos, page_size)

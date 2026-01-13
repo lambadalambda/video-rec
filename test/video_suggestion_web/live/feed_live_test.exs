@@ -5,6 +5,8 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
 
   import VideoSuggestion.AccountsFixtures
 
+  alias VideoSuggestion.Interactions.Interaction
+  alias VideoSuggestion.Repo
   alias VideoSuggestion.Videos
 
   test "feed videos fit within the viewport without native controls", %{conn: conn} do
@@ -180,5 +182,58 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
     refute html =~ "new-80"
     refute html =~ ~s(data-feed-clone="prev")
     refute html =~ ~s(data-feed-clone="next")
+  end
+
+  test "feed logs interaction batches for signed-in users", %{conn: conn} do
+    user = user_fixture()
+
+    {:ok, video} =
+      Videos.create_video(%{
+        user_id: user.id,
+        storage_key: "#{System.unique_integer([:positive])}.mp4",
+        caption: "hello",
+        original_filename: "sample.mp4",
+        content_type: "video/mp4",
+        content_hash: :crypto.strong_rand_bytes(32)
+      })
+
+    {:ok, lv, _html} = live(log_in_user(conn, user), "/")
+
+    assert Repo.aggregate(Interaction, :count, :id) == 0
+
+    render_hook(lv, "interaction-batch", %{
+      "events" => [
+        %{"type" => "impression", "video_id" => video.id},
+        %{"type" => "watch", "video_id" => video.id, "watch_ms" => 1234}
+      ]
+    })
+
+    assert Repo.aggregate(Interaction, :count, :id) == 2
+  end
+
+  test "feed ignores interaction batches for anonymous users", %{conn: conn} do
+    user = user_fixture()
+
+    {:ok, video} =
+      Videos.create_video(%{
+        user_id: user.id,
+        storage_key: "#{System.unique_integer([:positive])}.mp4",
+        caption: "hello",
+        original_filename: "sample.mp4",
+        content_type: "video/mp4",
+        content_hash: :crypto.strong_rand_bytes(32)
+      })
+
+    {:ok, lv, _html} = live(conn, "/")
+
+    assert Repo.aggregate(Interaction, :count, :id) == 0
+
+    render_hook(lv, "interaction-batch", %{
+      "events" => [
+        %{"type" => "impression", "video_id" => video.id}
+      ]
+    })
+
+    assert Repo.aggregate(Interaction, :count, :id) == 0
   end
 end
