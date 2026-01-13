@@ -291,6 +291,25 @@ defmodule VideoSuggestionWeb.FeedLive do
       socket.assigns.videos == [] ->
         {:noreply, assign(socket, has_more: false, mode: :full)}
 
+      socket.assigns.feed_order == :ranked ->
+        ranked_ids = socket.assigns.ranked_ids
+        offset = socket.assigns.ranked_offset
+
+        next_ids = Enum.slice(ranked_ids, offset, @page_size)
+        new_offset = offset + length(next_ids)
+        has_more = new_offset < length(ranked_ids)
+        mode = if has_more, do: :head, else: :full
+
+        more =
+          Videos.list_videos_by_ids(next_ids, current_user_id: socket.assigns.current_user_id)
+
+        {:noreply,
+         socket
+         |> assign(:videos, socket.assigns.videos ++ more)
+         |> assign(:ranked_offset, new_offset)
+         |> assign(:has_more, has_more)
+         |> assign(:mode, mode)}
+
       true ->
         last_video = List.last(socket.assigns.videos)
 
@@ -314,24 +333,59 @@ defmodule VideoSuggestionWeb.FeedLive do
 
   @impl true
   def handle_event("jump-to-end", _params, socket) do
-    videos =
-      Videos.list_tail_videos(
-        limit: @wrap_window,
-        current_user_id: socket.assigns.current_user_id
-      )
+    if socket.assigns.feed_order == :ranked do
+      ranked_ids = socket.assigns.ranked_ids
 
-    {:noreply, assign(socket, videos: videos, has_more: false, mode: :tail)}
+      tail_ids =
+        if length(ranked_ids) <= @wrap_window do
+          ranked_ids
+        else
+          Enum.take(ranked_ids, -@wrap_window)
+        end
+
+      videos =
+        Videos.list_videos_by_ids(tail_ids, current_user_id: socket.assigns.current_user_id)
+
+      {:noreply, assign(socket, videos: videos, has_more: false, mode: :tail)}
+    else
+      videos =
+        Videos.list_tail_videos(
+          limit: @wrap_window,
+          current_user_id: socket.assigns.current_user_id
+        )
+
+      {:noreply, assign(socket, videos: videos, has_more: false, mode: :tail)}
+    end
   end
 
   @impl true
   def handle_event("jump-to-start", _params, socket) do
-    {videos, has_more} =
-      Videos.list_videos(limit: @page_size + 1, current_user_id: socket.assigns.current_user_id)
-      |> take_page(@page_size)
+    if socket.assigns.feed_order == :ranked do
+      ranked_ids = socket.assigns.ranked_ids
 
-    mode = if has_more, do: :head, else: :full
+      {page_ids, has_more} = take_page(ranked_ids, @page_size)
 
-    {:noreply, assign(socket, videos: videos, has_more: has_more, mode: mode)}
+      videos =
+        Videos.list_videos_by_ids(page_ids, current_user_id: socket.assigns.current_user_id)
+
+      mode = if has_more, do: :head, else: :full
+
+      {:noreply,
+       assign(socket,
+         videos: videos,
+         has_more: has_more,
+         mode: mode,
+         ranked_offset: length(page_ids)
+       )}
+    else
+      {videos, has_more} =
+        Videos.list_videos(limit: @page_size + 1, current_user_id: socket.assigns.current_user_id)
+        |> take_page(@page_size)
+
+      mode = if has_more, do: :head, else: :full
+
+      {:noreply, assign(socket, videos: videos, has_more: has_more, mode: mode)}
+    end
   end
 
   defp interaction_attrs(event, user_id) when is_map(event) and is_integer(user_id) do
