@@ -1,4 +1,5 @@
 import math
+import builtins
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -25,7 +26,10 @@ def test_embed_video_returns_normalized_vector(tmp_path: Path, monkeypatch):
     get_settings.cache_clear()
 
     client = TestClient(app)
-    r = client.post("/v1/embed/video", json={"storage_key": "a.mp4", "caption": "Cats and dogs"})
+    r = client.post(
+        "/v1/embed/video",
+        json={"storage_key": "a.mp4", "caption": "Cats and dogs", "transcribe": False},
+    )
     assert r.status_code == 200
     payload = r.json()
 
@@ -60,6 +64,60 @@ def test_qwen_backend_without_deps_returns_501(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("EMBEDDING_BACKEND", "qwen3_vl")
     get_settings.cache_clear()
 
+    # Make this deterministic even if qwen/torch/transformers are installed locally.
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name in ("torch", "qwen_vl_utils") or name.startswith("transformers"):
+            raise ModuleNotFoundError(f"No module named {name}")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    import embedding_worker.backends.factory as backend_factory
+
+    backend_factory._cached_backend = None
+    backend_factory._cached_key = None
+
     client = TestClient(app)
     r = client.post("/v1/embed/video", json={"storage_key": "a.mp4"})
+    assert r.status_code == 501
+
+
+def test_transcribe_video_missing_file_returns_404(tmp_path: Path, monkeypatch):
+    uploads = tmp_path / "uploads"
+    uploads.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setenv("UPLOADS_DIR", str(uploads))
+    get_settings.cache_clear()
+
+    client = TestClient(app)
+    r = client.post("/v1/transcribe/video", json={"storage_key": "missing.mp4"})
+    assert r.status_code == 404
+
+
+def test_transcribe_video_without_whisper_returns_501(tmp_path: Path, monkeypatch):
+    uploads = tmp_path / "uploads"
+    uploads.mkdir(parents=True, exist_ok=True)
+    (uploads / "a.mp4").write_bytes(b"fake-mp4")
+
+    monkeypatch.setenv("UPLOADS_DIR", str(uploads))
+    get_settings.cache_clear()
+
+    # Make this deterministic even if whisper is installed locally.
+    from embedding_worker.transcription import get_openai_whisper_transcriber
+
+    get_openai_whisper_transcriber.cache_clear()
+
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "whisper":
+            raise ModuleNotFoundError("No module named 'whisper'")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    client = TestClient(app)
+    r = client.post("/v1/transcribe/video", json={"storage_key": "a.mp4"})
     assert r.status_code == 501

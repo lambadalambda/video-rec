@@ -10,6 +10,7 @@ class EmbeddingResult:
 
 
 class EmbeddingBackend:
-    def embed_video(self, *, path: str, caption: str, dims: int) -> EmbeddingResult:
+    def embed_video(
+        self, *, path: str, caption: str, dims: int, transcribe: Optional[bool] = None
+    ) -> EmbeddingResult:
         raise NotImplementedError
-

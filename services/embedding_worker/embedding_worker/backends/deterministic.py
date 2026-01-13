@@ -5,7 +5,7 @@ from .base import EmbeddingBackend, EmbeddingResult
 
 
 class DeterministicBackend(EmbeddingBackend):
-    def embed_video(self, *, path: str, caption: str, dims: int) -> EmbeddingResult:
+    def embed_video(self, *, path: str, caption: str, dims: int, transcribe=None) -> EmbeddingResult:
         if caption and caption.strip():
             return EmbeddingResult(
                 version="caption_v1",
@@ -34,4 +34,3 @@ def safe_storage_key_to_path(uploads_dir: Path, storage_key: str) -> Path:
         raise ValueError("invalid_storage_key")
 
     return (uploads_dir / storage_key).resolve()
-

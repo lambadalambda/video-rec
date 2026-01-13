@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Optional
 
 
@@ -52,6 +53,13 @@ class OpenAIWhisperTranscriber:
         return self._model
 
 
+@lru_cache(maxsize=4)
+def get_openai_whisper_transcriber(
+    *, model_name: str = "small", device: str = "auto", language: Optional[str] = None
+) -> OpenAIWhisperTranscriber:
+    return OpenAIWhisperTranscriber(model_name=model_name, device=device, language=language)
+
+
 def _default_device() -> str:
     try:
         import torch
@@ -63,4 +71,3 @@ def _default_device() -> str:
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return "mps"
     return "cpu"
-

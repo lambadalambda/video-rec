@@ -43,14 +43,18 @@ class Qwen3VLBackend(EmbeddingBackend):
         self._whisper_language = whisper_language
         self._transcriber = None
 
-    def embed_video(self, *, path: str, caption: str, dims: int) -> EmbeddingResult:
+    def embed_video(
+        self, *, path: str, caption: str, dims: int, transcribe: Optional[bool] = None
+    ) -> EmbeddingResult:
         transcript = None
 
         parts = []
         if caption and caption.strip():
             parts.append(caption.strip())
 
-        if self._transcribe_enabled:
+        do_transcribe = self._transcribe_enabled if transcribe is None else bool(transcribe)
+
+        if do_transcribe:
             transcript = self._get_transcriber().transcribe(path)
             if transcript:
                 parts.append(transcript)
