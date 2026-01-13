@@ -66,3 +66,22 @@ def test_transformers_transcriber_overrides_suspicious_max_length(monkeypatch):
     assert t.transcribe("video.mp4") == "hello world"
     # max_target_positions 448 - (start token + 2 prompt tokens) - 1 safety margin = 444
     assert calls[0][1]["generate_kwargs"]["max_new_tokens"] == 444
+
+
+def test_default_whisper_dtype(monkeypatch):
+    import torch
+
+    from embedding_worker import transcription
+
+    assert transcription._default_whisper_dtype("cpu", torch) == torch.float32
+    assert transcription._default_whisper_dtype("mps", torch) == torch.float32
+    assert transcription._default_whisper_dtype("cuda", torch) == torch.float16
+
+
+def test_whisper_dtype_override(monkeypatch):
+    import torch
+
+    from embedding_worker import transcription
+
+    monkeypatch.setenv("WHISPER_DTYPE", "fp16")
+    assert transcription._whisper_dtype_from_env(torch) == torch.float16

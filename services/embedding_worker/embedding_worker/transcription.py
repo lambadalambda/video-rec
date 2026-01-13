@@ -145,10 +145,15 @@ class TransformersWhisperTranscriber:
 
         self._device = device
 
+        dtype = _whisper_dtype_from_env(torch)
+        if dtype is None:
+            dtype = _default_whisper_dtype(device, torch)
+
         self._pipeline = pipeline(
             task="automatic-speech-recognition",
             model=self._model_name,
             device=device,
+            dtype=dtype,
         )
 
         return self._pipeline
@@ -197,6 +202,33 @@ def _default_device_torch(torch) -> str:
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return "mps"
     return "cpu"
+
+
+def _default_whisper_dtype(device: str, torch):
+    # On MPS, fp16 can lead to heavily degraded transcripts (often just a couple tokens).
+    # Keep fp32 unless the user explicitly opts in.
+    if device == "cuda":
+        return torch.float16
+    return torch.float32
+
+
+def _whisper_dtype_from_env(torch):
+    raw = os.environ.get("WHISPER_DTYPE")
+    if not raw:
+        return None
+
+    raw = raw.strip().lower()
+    if raw in {"auto", "none"}:
+        return None
+
+    if raw in {"float32", "fp32"}:
+        return torch.float32
+    if raw in {"float16", "fp16"}:
+        return torch.float16
+    if raw in {"bfloat16", "bf16"}:
+        return torch.bfloat16
+
+    return None
 
 
 def _is_likely_audio_path(path: str) -> bool:

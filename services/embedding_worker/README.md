@@ -41,6 +41,9 @@ Some Whisper model repos (notably `openai/whisper-large-v3-turbo`) ship with a v
 generation `max_length`, which truncates transcripts. The worker detects this and sets a safe
 `max_new_tokens` automatically; override with `WHISPER_MAX_NEW_TOKENS` if needed.
 
+On Apple Silicon, the Transformers backend defaults to `float32` to avoid degraded transcripts on MPS.
+Override with `WHISPER_DTYPE=fp16|fp32|bf16` if you want.
+
 ## Run
 
 From the repo root (so `priv/static/uploads` resolves correctly):
