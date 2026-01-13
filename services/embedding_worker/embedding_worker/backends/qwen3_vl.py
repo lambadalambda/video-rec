@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import gc
 import importlib.util
+import logging
 import os
 import re
 import shutil
 import subprocess
+import time
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -19,6 +21,9 @@ class Qwen3VLOptions:
     model_name_or_path: str
     device: Optional[str] = None
     max_length: int = 8192
+
+
+logger = logging.getLogger(__name__)
 
 
 class Qwen3VLBackend(EmbeddingBackend):
@@ -56,6 +61,7 @@ class Qwen3VLBackend(EmbeddingBackend):
     def embed_video(
         self, *, path: str, caption: str, dims: int, transcribe: Optional[bool] = None
     ) -> EmbeddingResult:
+        started = time.monotonic()
         transcript = None
 
         parts = []
@@ -75,7 +81,11 @@ class Qwen3VLBackend(EmbeddingBackend):
 
         duration_seconds = None
         if isinstance(self._video_target_frames, int) and self._video_target_frames > 0:
+            probe_started = time.monotonic()
             duration_seconds = _probe_video_duration_seconds(path)
+            probe_ms = int((time.monotonic() - probe_started) * 1000)
+        else:
+            probe_ms = 0
 
         video_fps, video_max_frames = _compute_video_sampling_params(
             duration_seconds=duration_seconds,
@@ -84,18 +94,29 @@ class Qwen3VLBackend(EmbeddingBackend):
             target_frames=self._video_target_frames,
         )
 
+        reader_backend = _qwen_video_reader_backend()
+
         video_input: Any = path
+        frame_extractor = "native"
+        extracted_frames = 0
+        extract_ms = 0
         if _should_extract_video_frames(
             requested_target_frames=self._video_target_frames,
-            reader_backend=_qwen_video_reader_backend(),
+            reader_backend=reader_backend,
         ):
+            frame_extractor = "ffmpeg"
+            extract_started = time.monotonic()
             extracted = _extract_video_frames_ffmpeg(
                 video_path=path,
                 fps=video_fps,
                 max_frames=video_max_frames,
             )
+            extract_ms = int((time.monotonic() - extract_started) * 1000)
             if extracted:
                 video_input = extracted
+                extracted_frames = len(extracted)
+            else:
+                frame_extractor = "native_fallback"
 
         base_input: Dict[str, Any] = {
             "video": video_input,
@@ -105,9 +126,29 @@ class Qwen3VLBackend(EmbeddingBackend):
             "sample_fps": video_fps,
             "duration_seconds": duration_seconds,
         }
+
+        rss_mb = _current_rss_mb()
+        logger.info(
+            "qwen3_vl.embed_video start path=%s size_mb=%.2f duration_s=%s fps=%.4f max_frames=%d target_frames=%s reader=%s extractor=%s extracted=%d rss_mb=%s probe_ms=%d extract_ms=%d",
+            path,
+            _file_size_mb(path),
+            f"{duration_seconds:.3f}" if isinstance(duration_seconds, (int, float)) else "unknown",
+            float(video_fps),
+            int(video_max_frames),
+            self._video_target_frames,
+            reader_backend,
+            frame_extractor,
+            extracted_frames,
+            f"{rss_mb:.1f}" if isinstance(rss_mb, (int, float)) else "unknown",
+            probe_ms,
+            extract_ms,
+        )
+
         embeddings = None
         try:
+            embed_started = time.monotonic()
             embeddings = _process_with_adaptive_max_frames(embedder, base_input)
+            embed_ms = int((time.monotonic() - embed_started) * 1000)
             vec = embeddings[0].detach().to("cpu").tolist()
         finally:
             embeddings = None
@@ -120,6 +161,18 @@ class Qwen3VLBackend(EmbeddingBackend):
             dims = len(vec)
 
         version = "qwen3_vl_whisper_v1" if transcript else "qwen3_vl_v1"
+
+        total_ms = int((time.monotonic() - started) * 1000)
+        rss_mb_done = _current_rss_mb()
+        logger.info(
+            "qwen3_vl.embed_video done path=%s version=%s dims=%d elapsed_ms=%d embed_ms=%d rss_mb=%s",
+            path,
+            version,
+            dims,
+            total_ms,
+            embed_ms if "embed_ms" in locals() else 0,
+            f"{rss_mb_done:.1f}" if isinstance(rss_mb_done, (int, float)) else "unknown",
+        )
         return EmbeddingResult(version=version, embedding=vec, transcript=transcript)
 
     def _get_embedder(self):
@@ -356,6 +409,7 @@ def _process_with_adaptive_max_frames(embedder, base_input: Dict[str, Any]):
             if not _is_mm_video_token_mismatch(e) or not isinstance(max_frames, int) or max_frames <= 1:
                 raise
 
+            previous_max_frames = max_frames
             next_max_frames = _reduce_max_frames_from_error(max_frames, str(e))
             if next_max_frames >= max_frames:
                 next_max_frames = max_frames // 2
@@ -369,6 +423,13 @@ def _process_with_adaptive_max_frames(embedder, base_input: Dict[str, Any]):
             video = next_input.get("video")
             if isinstance(video, (list, tuple)):
                 next_input["video"] = _downsample_frames(video, max_frames)
+
+            logger.warning(
+                "qwen3_vl token_mismatch max_frames=%s->%s fps=%s",
+                previous_max_frames,
+                max_frames,
+                next_input.get("fps"),
+            )
 
             inputs = [next_input]
 
@@ -630,3 +691,36 @@ def _downsample_frames(frames: Any, target_frames: int) -> List[Any]:
     last = len(items) - 1
     indices = [int(i * last / (target_frames - 1)) for i in range(target_frames)]
     return [items[i] for i in indices]
+
+
+def _file_size_mb(path: str) -> float:
+    try:
+        return Path(str(path)).stat().st_size / (1024 * 1024)
+    except OSError:
+        return 0.0
+
+
+def _current_rss_mb() -> Optional[float]:
+    try:
+        result = subprocess.run(
+            ["ps", "-o", "rss=", "-p", str(os.getpid())],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except Exception:
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    raw = (result.stdout or "").strip()
+    if not raw:
+        return None
+
+    try:
+        kb = int(raw)
+    except ValueError:
+        return None
+
+    return kb / 1024.0

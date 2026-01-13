@@ -65,6 +65,8 @@ EMBEDDING_DIMS=64 \
 python -m uvicorn embedding_worker.main:app --reload --port 9001
 ```
 
+To see more detail, run uvicorn with `--log-level debug`.
+
 To run the real backend:
 
 ```sh
