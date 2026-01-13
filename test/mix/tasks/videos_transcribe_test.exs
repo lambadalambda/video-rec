@@ -89,4 +89,49 @@ defmodule Mix.Tasks.Videos.TranscribeTest do
 
     assert Videos.get_video!(video.id).transcript == "tx:#{storage_key}"
   end
+
+  test "stores empty transcripts and does not retry them without --force" do
+    user = user_fixture()
+
+    storage_key = "#{System.unique_integer([:positive])}.mp4"
+
+    assert {:ok, video} =
+             Videos.create_video(%{
+               user_id: user.id,
+               storage_key: storage_key,
+               content_hash: :crypto.strong_rand_bytes(32)
+             })
+
+    Uploads.ensure_dir!()
+    File.write!(Uploads.path(storage_key), "fake")
+    on_exit(fn -> File.rm_rf(Uploads.path(storage_key)) end)
+
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      case {conn.method, conn.request_path} do
+        {"POST", "/v1/transcribe/video"} ->
+          send(test_pid, {:transcribe_called, conn.request_path})
+          Req.Test.json(conn, %{transcript: ""})
+
+        _ ->
+          Plug.Conn.send_resp(conn, 404, "not found")
+      end
+    end)
+
+    _output =
+      capture_io(fn ->
+        Mix.Tasks.Videos.Transcribe.run([])
+      end)
+
+    assert_receive {:transcribe_called, _}
+    assert Videos.get_video!(video.id).transcript == ""
+
+    _output =
+      capture_io(fn ->
+        Mix.Tasks.Videos.Transcribe.run([])
+      end)
+
+    refute_receive {:transcribe_called, _}, 50
+  end
 end

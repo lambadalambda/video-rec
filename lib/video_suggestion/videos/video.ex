@@ -38,6 +38,6 @@ defmodule VideoSuggestion.Videos.Video do
 
   def transcript_changeset(video, attrs) do
     video
-    |> cast(attrs, [:transcript])
+    |> cast(attrs, [:transcript], empty_values: [])
   end
 end

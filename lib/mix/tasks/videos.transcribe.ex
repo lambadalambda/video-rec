@@ -81,13 +81,16 @@ defmodule Mix.Tasks.Videos.Transcribe do
                       {:ok, %{"transcript" => transcript}} ->
                         transcript = (transcript || "") |> String.trim()
 
-                        if transcript == "" do
-                          {updated, skipped + 1, failures}
-                        else
-                          case Videos.set_video_transcript(video.id, transcript) do
-                            {:ok, _} -> {updated + 1, skipped, failures}
-                            {:error, _} -> {updated, skipped, failures + 1}
-                          end
+                        case Videos.set_video_transcript(video.id, transcript) do
+                          {:ok, _} ->
+                            if transcript == "" do
+                              {updated, skipped + 1, failures}
+                            else
+                              {updated + 1, skipped, failures}
+                            end
+
+                          {:error, _} ->
+                            {updated, skipped, failures + 1}
                         end
 
                       {:ok, _unexpected} ->
@@ -117,7 +120,7 @@ defmodule Mix.Tasks.Videos.Transcribe do
         query
       else
         from v in query,
-          where: is_nil(v.transcript) or v.transcript == ""
+          where: is_nil(v.transcript)
       end
 
     Repo.all(query)
