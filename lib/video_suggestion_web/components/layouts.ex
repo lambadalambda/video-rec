@@ -62,6 +62,12 @@ defmodule VideoSuggestionWeb.Layouts do
                   Reco
                 </.link>
               </li>
+
+              <li>
+                <.link navigate={~p"/admin/similarity"} class="btn btn-ghost btn-sm">
+                  Similarity
+                </.link>
+              </li>
             <% end %>
 
             <li class="hidden sm:block text-xs opacity-70">
