@@ -85,7 +85,7 @@ class TransformersWhisperTranscriber:
         if self._language:
             generate_kwargs["language"] = self._language
 
-        max_new_tokens = _default_max_new_tokens_for_pipeline(pipeline)
+        max_new_tokens = _default_max_new_tokens_for_pipeline(pipeline, generate_kwargs)
         if max_new_tokens is not None:
             generate_kwargs["max_new_tokens"] = max_new_tokens
 
@@ -257,8 +257,10 @@ def _run_asr_pipeline(pipeline, audio_path: str, generate_kwargs):
         raise
 
 
-def _default_max_new_tokens_for_pipeline(pipeline) -> Optional[int]:
+def _default_max_new_tokens_for_pipeline(pipeline, generate_kwargs) -> Optional[int]:
     override = os.environ.get("WHISPER_MAX_NEW_TOKENS")
+    budget = _max_new_tokens_budget_for_pipeline(pipeline, generate_kwargs)
+
     if override:
         try:
             value = int(override)
@@ -266,7 +268,9 @@ def _default_max_new_tokens_for_pipeline(pipeline) -> Optional[int]:
             value = None
 
         if value is not None and value > 0:
-            return value
+            if budget is None:
+                return value
+            return min(value, budget)
 
     model = getattr(pipeline, "model", None)
     if model is None:
@@ -294,9 +298,55 @@ def _default_max_new_tokens_for_pipeline(pipeline) -> Optional[int]:
                 suspected_max_length = min(suspected_max_length, candidate)
 
     if suspected_max_length is not None and suspected_max_length < 64:
-        return max_target_positions
+        return budget
 
     return None
+
+
+def _max_new_tokens_budget_for_pipeline(pipeline, generate_kwargs) -> Optional[int]:
+    model = getattr(pipeline, "model", None)
+    if model is None:
+        return None
+
+    config = getattr(model, "config", None)
+    max_target_positions = getattr(config, "max_target_positions", None)
+    if not isinstance(max_target_positions, int) or max_target_positions <= 0:
+        return None
+
+    prompt_len = _decoder_prompt_len_for_pipeline(pipeline, generate_kwargs)
+    if not isinstance(prompt_len, int) or prompt_len <= 0:
+        return None
+
+    # Transformers validates that `decoder_input_ids` (prompt+start tokens) plus `max_new_tokens`
+    # stays strictly below `max_target_positions`.
+    budget = max_target_positions - prompt_len - 1
+    if budget <= 0:
+        return None
+
+    return budget
+
+
+def _decoder_prompt_len_for_pipeline(pipeline, generate_kwargs) -> Optional[int]:
+    tokenizer = getattr(pipeline, "tokenizer", None)
+    get_prompt_ids = getattr(tokenizer, "get_decoder_prompt_ids", None)
+    if callable(get_prompt_ids):
+        try:
+            prompt_ids = get_prompt_ids(
+                task=generate_kwargs.get("task"),
+                language=generate_kwargs.get("language"),
+            )
+        except Exception:
+            prompt_ids = None
+
+        # `prompt_ids` excludes the decoder start token, which still counts towards length.
+        if prompt_ids is None:
+            return 1
+        return 1 + len(prompt_ids)
+
+    # Fallback heuristic for older tokenizers (Whisper starts with task/no-timestamps + optional language).
+    if generate_kwargs.get("language"):
+        return 4
+    return 3
 
 
 def _find_ffmpeg() -> Optional[str]:

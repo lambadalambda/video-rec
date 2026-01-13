@@ -38,7 +38,7 @@ When using the Transformers backend with video files (e.g. `.mp4`), the worker e
 with `ffmpeg`, so make sure it is installed and available on `PATH` (or set `FFMPEG_BIN`).
 
 Some Whisper model repos (notably `openai/whisper-large-v3-turbo`) ship with a very low default
-generation `max_length`, which truncates transcripts. The worker detects this and sets
+generation `max_length`, which truncates transcripts. The worker detects this and sets a safe
 `max_new_tokens` automatically; override with `WHISPER_MAX_NEW_TOKENS` if needed.
 
 ## Run

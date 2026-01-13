@@ -48,6 +48,13 @@ def test_transformers_transcriber_overrides_suspicious_max_length(monkeypatch):
     class DummyPipeline:
         model = DummyModel()
 
+        class tokenizer:
+            @staticmethod
+            def get_decoder_prompt_ids(*, task=None, language=None):
+                # Matches Whisper behaviour when language is not provided:
+                # task token + no-timestamps token (start token is implicit).
+                return [(1, 123), (2, 456)]
+
         def __call__(self, path, **kwargs):
             calls.append((path, kwargs))
             return {"text": "hello world"}
@@ -57,4 +64,5 @@ def test_transformers_transcriber_overrides_suspicious_max_length(monkeypatch):
 
     t = TransformersWhisperTranscriber(model_name="noop", device="cpu")
     assert t.transcribe("video.mp4") == "hello world"
-    assert calls[0][1]["generate_kwargs"]["max_new_tokens"] == 448
+    # max_target_positions 448 - (start token + 2 prompt tokens) - 1 safety margin = 444
+    assert calls[0][1]["generate_kwargs"]["max_new_tokens"] == 444
