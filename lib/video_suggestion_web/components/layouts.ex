@@ -56,6 +56,12 @@ defmodule VideoSuggestionWeb.Layouts do
                   Upload
                 </.link>
               </li>
+
+              <li>
+                <.link navigate={~p"/admin/recommendations"} class="btn btn-ghost btn-sm">
+                  Reco
+                </.link>
+              </li>
             <% end %>
 
             <li class="hidden sm:block text-xs opacity-70">

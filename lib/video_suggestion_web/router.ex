@@ -30,6 +30,7 @@ defmodule VideoSuggestionWeb.Router do
         {VideoSuggestionWeb.UserAuth, :require_admin}
       ] do
       live "/videos/new", Admin.VideoUploadLive, :new
+      live "/recommendations", Admin.RecommendationsLive, :index
     end
   end
 
