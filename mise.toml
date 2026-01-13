@@ -4,3 +4,4 @@ CODEX_HOME = ".codex"
 [tools]
 elixir = "1.19.0-otp-28"
 erlang = "28.3"
+python = "3.12"
