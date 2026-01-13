@@ -35,6 +35,9 @@ This repo includes a small Python embedding worker in `services/embedding_worker
 Run the worker (from the repo root so uploads resolve correctly):
 
 ```sh
+# (optional) activate your venv:
+# source services/embedding_worker/.venv/bin/activate
+PYTHONPATH=services/embedding_worker \
 UPLOADS_DIR=priv/static/uploads \
 python -m uvicorn embedding_worker.main:app --reload --port 9001
 ```

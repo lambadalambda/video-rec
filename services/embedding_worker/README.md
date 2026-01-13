@@ -30,7 +30,17 @@ pip install -r requirements-whisper.txt
 From the repo root (so `priv/static/uploads` resolves correctly):
 
 ```sh
+PYTHONPATH=services/embedding_worker \
 UPLOADS_DIR=priv/static/uploads \
+EMBEDDING_BACKEND=deterministic \
+EMBEDDING_DIMS=64 \
+python -m uvicorn embedding_worker.main:app --reload --port 9001
+```
+
+Or from `services/embedding_worker`:
+
+```sh
+UPLOADS_DIR=../../priv/static/uploads \
 EMBEDDING_BACKEND=deterministic \
 EMBEDDING_DIMS=64 \
 python -m uvicorn embedding_worker.main:app --reload --port 9001
@@ -39,6 +49,7 @@ python -m uvicorn embedding_worker.main:app --reload --port 9001
 To run the real backend:
 
 ```sh
+PYTHONPATH=services/embedding_worker \
 UPLOADS_DIR=priv/static/uploads \
 EMBEDDING_BACKEND=qwen3_vl \
 QWEN3_VL_MODEL=Qwen/Qwen3-VL-Embedding-2B \
