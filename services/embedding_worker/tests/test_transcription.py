@@ -1,30 +1,17 @@
-import types
-
-from embedding_worker.transcription import OpenAIWhisperTranscriber
+from embedding_worker.transcription import TransformersWhisperTranscriber
 
 
-def test_openai_whisper_transcriber_uses_cached_model(monkeypatch):
-    calls = {"load_model": 0, "transcribe": 0}
+def test_transformers_transcriber_extracts_audio_for_video(monkeypatch):
+    calls = []
 
-    class FakeModel:
-        def transcribe(self, path, **kwargs):
-            calls["transcribe"] += 1
-            assert path == "/tmp/a.mp4"
-            assert kwargs["task"] == "transcribe"
-            return {"text": " hello world "}
+    def fake_pipeline(path, **kwargs):
+        calls.append((path, kwargs))
+        return {"text": "hello world"}
 
-    def load_model(model_name, device="cpu", download_root=None):
-        calls["load_model"] += 1
-        assert model_name == "tiny"
-        assert device == "cpu"
-        return FakeModel()
+    monkeypatch.setattr(TransformersWhisperTranscriber, "_get_pipeline", lambda self: fake_pipeline)
+    monkeypatch.setattr("embedding_worker.transcription._extract_audio_to_wav", lambda _p: "converted.wav")
 
-    fake_whisper = types.SimpleNamespace(load_model=load_model)
-    monkeypatch.setitem(__import__("sys").modules, "whisper", fake_whisper)
+    t = TransformersWhisperTranscriber(model_name="noop", device="cpu")
+    assert t.transcribe("video.mp4") == "hello world"
+    assert calls[0][0] == "converted.wav"
 
-    transcriber = OpenAIWhisperTranscriber(model_name="tiny", device="cpu")
-
-    assert transcriber.transcribe("/tmp/a.mp4") == "hello world"
-    assert transcriber.transcribe("/tmp/a.mp4") == "hello world"
-    assert calls["load_model"] == 1
-    assert calls["transcribe"] == 2

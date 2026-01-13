@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+import subprocess
+import tempfile
+import os
+from pathlib import Path
 from typing import Optional
 
 
@@ -80,16 +84,35 @@ class TransformersWhisperTranscriber:
         if self._language:
             generate_kwargs["language"] = self._language
 
+        tmp_audio_path = None
+        audio_path = path
+
         try:
-            result = pipeline(path, generate_kwargs=generate_kwargs)
-        except ValueError as e:
-            # For audio > ~30s, Whisper switches to long-form generation which requires timestamp tokens.
-            # In that case, retry with timestamps enabled and just return the combined text.
-            message = str(e)
-            if "return_timestamps" in message and "long-form generation" in message:
-                result = pipeline(path, generate_kwargs=generate_kwargs, return_timestamps=True)
-            else:
-                raise
+            if not _is_likely_audio_path(audio_path):
+                tmp_audio_path = _extract_audio_to_wav(audio_path)
+                audio_path = tmp_audio_path
+
+            try:
+                result = _run_asr_pipeline(pipeline, audio_path, generate_kwargs)
+            except ValueError as e:
+                # Some pipeline backends try to open files via soundfile, which doesn't support
+                # video containers. If that happens, fall back to extracting audio and retry.
+                message = str(e)
+                if (
+                    tmp_audio_path is None
+                    and "Soundfile is either not in the correct format" in message
+                ):
+                    tmp_audio_path = _extract_audio_to_wav(path)
+                    audio_path = tmp_audio_path
+                    result = _run_asr_pipeline(pipeline, audio_path, generate_kwargs)
+                else:
+                    raise
+        finally:
+            if tmp_audio_path is not None:
+                try:
+                    os.remove(tmp_audio_path)
+                except OSError:
+                    pass
 
         if isinstance(result, dict):
             text = (result.get("text") or "").strip()
@@ -163,3 +186,52 @@ def _default_device_torch(torch) -> str:
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return "mps"
     return "cpu"
+
+
+def _is_likely_audio_path(path: str) -> bool:
+    ext = Path(str(path)).suffix.lower()
+    return ext in {".wav", ".flac", ".mp3", ".m4a", ".ogg", ".opus"}
+
+
+def _extract_audio_to_wav(video_path: str) -> str:
+    fd, out_path = tempfile.mkstemp(prefix="embedding_worker_audio_", suffix=".wav")
+    os.close(fd)
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video_path),
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-f",
+        "wav",
+        out_path,
+        "-loglevel",
+        "error",
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError as e:
+        raise RuntimeError("ffmpeg_not_found") from e
+
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        raise RuntimeError(f"ffmpeg_failed: {stderr}")
+
+    return out_path
+
+
+def _run_asr_pipeline(pipeline, audio_path: str, generate_kwargs):
+    try:
+        return pipeline(audio_path, generate_kwargs=generate_kwargs)
+    except ValueError as e:
+        # For audio > ~30s, Whisper switches to long-form generation which requires timestamp tokens.
+        message = str(e)
+        if "return_timestamps" in message and "long-form generation" in message:
+            return pipeline(audio_path, generate_kwargs=generate_kwargs, return_timestamps=True)
+        raise

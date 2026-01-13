@@ -77,5 +77,11 @@ def transcribe_video(req: VideoTranscribeRequest):
         transcript = transcriber.transcribe(path=str(path))
     except (ModuleNotFoundError, ImportError) as e:
         raise HTTPException(status_code=501, detail="backend_dependencies_missing") from e
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail="backend_not_implemented") from e
+    except RuntimeError as e:
+        detail = str(e)
+        status = 501 if detail.startswith("ffmpeg_") else 500
+        raise HTTPException(status_code=status, detail=detail) from e
 
     return VideoTranscribeResponse(transcript=transcript or "")
