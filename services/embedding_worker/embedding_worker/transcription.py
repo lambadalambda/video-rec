@@ -5,6 +5,7 @@ from functools import lru_cache
 import subprocess
 import tempfile
 import os
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -90,6 +91,9 @@ class TransformersWhisperTranscriber:
         try:
             if not _is_likely_audio_path(audio_path):
                 tmp_audio_path = _extract_audio_to_wav(audio_path)
+                if tmp_audio_path is None:
+                    return ""
+
                 audio_path = tmp_audio_path
 
             try:
@@ -103,6 +107,9 @@ class TransformersWhisperTranscriber:
                     and "Soundfile is either not in the correct format" in message
                 ):
                     tmp_audio_path = _extract_audio_to_wav(path)
+                    if tmp_audio_path is None:
+                        return ""
+
                     audio_path = tmp_audio_path
                     result = _run_asr_pipeline(pipeline, audio_path, generate_kwargs)
                 else:
@@ -193,12 +200,16 @@ def _is_likely_audio_path(path: str) -> bool:
     return ext in {".wav", ".flac", ".mp3", ".m4a", ".ogg", ".opus"}
 
 
-def _extract_audio_to_wav(video_path: str) -> str:
+def _extract_audio_to_wav(video_path: str) -> Optional[str]:
     fd, out_path = tempfile.mkstemp(prefix="embedding_worker_audio_", suffix=".wav")
     os.close(fd)
 
+    ffmpeg_bin = _find_ffmpeg()
+    if ffmpeg_bin is None:
+        raise RuntimeError("ffmpeg_not_found")
+
     cmd = [
-        "ffmpeg",
+        ffmpeg_bin,
         "-y",
         "-i",
         str(video_path),
@@ -214,13 +225,18 @@ def _extract_audio_to_wav(video_path: str) -> str:
         "error",
     ]
 
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-    except FileNotFoundError as e:
-        raise RuntimeError("ffmpeg_not_found") from e
+    result = subprocess.run(cmd, capture_output=True, text=True)
 
     if result.returncode != 0:
         stderr = (result.stderr or "").strip()
+        if _ffmpeg_no_audio(stderr):
+            try:
+                os.remove(out_path)
+            except OSError:
+                pass
+
+            return None
+
         raise RuntimeError(f"ffmpeg_failed: {stderr}")
 
     return out_path
@@ -235,3 +251,27 @@ def _run_asr_pipeline(pipeline, audio_path: str, generate_kwargs):
         if "return_timestamps" in message and "long-form generation" in message:
             return pipeline(audio_path, generate_kwargs=generate_kwargs, return_timestamps=True)
         raise
+
+
+def _find_ffmpeg() -> Optional[str]:
+    override = os.environ.get("FFMPEG_BIN")
+    if override:
+        return override
+
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+
+    for candidate in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"):
+        if os.path.exists(candidate):
+            return candidate
+
+    return None
+
+
+def _ffmpeg_no_audio(stderr: str) -> bool:
+    if not stderr:
+        return False
+
+    stderr = stderr.lower()
+    return "does not contain any stream" in stderr or "matches no streams" in stderr
