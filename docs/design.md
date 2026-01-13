@@ -13,6 +13,7 @@
 - `docs/milestones/03-user-taste-profiles.md`
 - `docs/milestones/04-auto-tagging.md`
 - `docs/milestones/05-api-and-pipeline.md`
+- `docs/milestones/06-personalized-feed.md`
 
 ---
 
