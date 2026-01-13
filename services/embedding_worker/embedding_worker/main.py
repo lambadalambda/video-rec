@@ -32,6 +32,11 @@ def embed_video(req: VideoEmbedRequest):
         raise HTTPException(status_code=404, detail="video_not_found")
 
     dims = req.dims or settings.dims
-    result = backend.embed_video(path=str(path), caption=req.caption or "", dims=dims)
+    try:
+        result = backend.embed_video(path=str(path), caption=req.caption or "", dims=dims)
+    except (ModuleNotFoundError, ImportError) as e:
+        raise HTTPException(status_code=501, detail="backend_dependencies_missing") from e
 
-    return VideoEmbedResponse(version=result.version, dims=dims, embedding=result.embedding)
+    return VideoEmbedResponse(
+        version=result.version, dims=dims, embedding=result.embedding, transcript=result.transcript
+    )

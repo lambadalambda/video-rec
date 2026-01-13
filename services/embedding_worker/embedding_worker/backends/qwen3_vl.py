@@ -14,14 +14,59 @@ class Qwen3VLOptions:
 
 
 class Qwen3VLBackend(EmbeddingBackend):
-    def __init__(self, model_name_or_path: str, device: Optional[str] = None):
-        self._opts = Qwen3VLOptions(model_name_or_path=model_name_or_path, device=device)
+    def __init__(
+        self,
+        *,
+        model_name_or_path: str,
+        device: str = "auto",
+        max_length: int = 8192,
+        video_fps: float = 1.0,
+        video_max_frames: int = 64,
+        transcribe_enabled: bool = True,
+        whisper_backend: str = "openai",
+        whisper_model: str = "small",
+        whisper_device: str = "auto",
+        whisper_language: Optional[str] = None,
+    ):
+        self._opts = Qwen3VLOptions(
+            model_name_or_path=model_name_or_path, device=device, max_length=max_length
+        )
         self._embedder = None
 
+        self._video_fps = video_fps
+        self._video_max_frames = video_max_frames
+
+        self._transcribe_enabled = transcribe_enabled
+        self._whisper_backend = whisper_backend
+        self._whisper_model = whisper_model
+        self._whisper_device = whisper_device
+        self._whisper_language = whisper_language
+        self._transcriber = None
+
     def embed_video(self, *, path: str, caption: str, dims: int) -> EmbeddingResult:
+        transcript = None
+
+        parts = []
+        if caption and caption.strip():
+            parts.append(caption.strip())
+
+        if self._transcribe_enabled:
+            transcript = self._get_transcriber().transcribe(path)
+            if transcript:
+                parts.append(transcript)
+
+        text = "\n\n".join(parts)
+
         embedder = self._get_embedder()
 
-        inputs: List[Dict[str, Any]] = [{"video": path, "text": caption or ""}]
+        inputs: List[Dict[str, Any]] = [
+            {
+                "video": path,
+                "text": text,
+                "fps": self._video_fps,
+                "max_frames": self._video_max_frames,
+            }
+        ]
         embeddings = embedder.process(inputs, normalize=True)
 
         vec = embeddings[0].tolist()
@@ -32,7 +77,8 @@ class Qwen3VLBackend(EmbeddingBackend):
         else:
             dims = len(vec)
 
-        return EmbeddingResult(version="qwen3_vl_v1", embedding=vec, transcript=None)
+        version = "qwen3_vl_whisper_v1" if transcript else "qwen3_vl_v1"
+        return EmbeddingResult(version=version, embedding=vec, transcript=transcript)
 
     def _get_embedder(self):
         if self._embedder is not None:
@@ -40,6 +86,23 @@ class Qwen3VLBackend(EmbeddingBackend):
 
         self._embedder = _Qwen3VLEmbedder(self._opts)
         return self._embedder
+
+    def _get_transcriber(self):
+        if self._transcriber is not None:
+            return self._transcriber
+
+        if self._whisper_backend != "openai":
+            raise NotImplementedError("Only WHISPER_BACKEND=openai is supported right now")
+
+        from ..transcription import OpenAIWhisperTranscriber
+
+        self._transcriber = OpenAIWhisperTranscriber(
+            model_name=self._whisper_model,
+            device=self._whisper_device,
+            language=self._whisper_language,
+        )
+
+        return self._transcriber
 
 
 def _l2_normalize(vec: List[float]) -> List[float]:
@@ -85,7 +148,10 @@ class _Qwen3VLEmbedder:
             .eval()
         )
 
-        device = opts.device or _default_device(torch)
+        device = opts.device
+        if not device or device == "auto":
+            device = _default_device(torch)
+
         self._model.to(device)
 
     def process(self, inputs: List[Dict[str, Any]], normalize: bool = True):

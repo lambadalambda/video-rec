@@ -49,3 +49,17 @@ def test_unknown_backend_returns_501(tmp_path: Path, monkeypatch):
     client = TestClient(app)
     r = client.post("/v1/embed/video", json={"storage_key": "a.mp4"})
     assert r.status_code == 501
+
+
+def test_qwen_backend_without_deps_returns_501(tmp_path: Path, monkeypatch):
+    uploads = tmp_path / "uploads"
+    uploads.mkdir(parents=True, exist_ok=True)
+    (uploads / "a.mp4").write_bytes(b"fake-mp4")
+
+    monkeypatch.setenv("UPLOADS_DIR", str(uploads))
+    monkeypatch.setenv("EMBEDDING_BACKEND", "qwen3_vl")
+    get_settings.cache_clear()
+
+    client = TestClient(app)
+    r = client.post("/v1/embed/video", json={"storage_key": "a.mp4"})
+    assert r.status_code == 501

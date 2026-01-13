@@ -13,4 +13,4 @@ class VideoEmbedResponse(BaseModel):
     version: str
     dims: int
     embedding: List[float]
-
+    transcript: Optional[str] = None

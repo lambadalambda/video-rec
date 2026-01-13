@@ -19,6 +19,12 @@ pip install -r requirements.txt -r requirements-dev.txt
 pip install -r requirements-qwen.txt
 ```
 
+## Enable Whisper transcription
+
+```sh
+pip install -r requirements-whisper.txt
+```
+
 ## Run
 
 From the repo root (so `priv/static/uploads` resolves correctly):
@@ -37,6 +43,8 @@ UPLOADS_DIR=priv/static/uploads \
 EMBEDDING_BACKEND=qwen3_vl \
 QWEN3_VL_MODEL=Qwen/Qwen3-VL-Embedding-2B \
 EMBEDDING_DIMS=512 \
+TRANSCRIBE_ENABLED=1 \
+WHISPER_MODEL=small \
 python -m uvicorn embedding_worker.main:app --reload --port 9001
 ```
 
