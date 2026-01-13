@@ -1,7 +1,8 @@
 from fastapi import FastAPI, HTTPException
 
 from .api_models import VideoEmbedRequest, VideoEmbedResponse
-from .backends.deterministic import DeterministicBackend, safe_storage_key_to_path
+from .backends import get_backend
+from .backends.deterministic import safe_storage_key_to_path
 from .config import get_settings
 
 app = FastAPI(title="Embedding Worker", version="0.1.0")
@@ -17,7 +18,9 @@ def healthz():
 def embed_video(req: VideoEmbedRequest):
     settings = get_settings()
 
-    if settings.backend != "deterministic":
+    try:
+        backend = get_backend(settings)
+    except NotImplementedError:
         raise HTTPException(status_code=501, detail="backend_not_implemented")
 
     try:
@@ -29,8 +32,6 @@ def embed_video(req: VideoEmbedRequest):
         raise HTTPException(status_code=404, detail="video_not_found")
 
     dims = req.dims or settings.dims
-    backend = DeterministicBackend()
     result = backend.embed_video(path=str(path), caption=req.caption or "", dims=dims)
 
     return VideoEmbedResponse(version=result.version, dims=dims, embedding=result.embedding)
-

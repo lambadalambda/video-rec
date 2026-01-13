@@ -35,3 +35,17 @@ def test_embed_video_returns_normalized_vector(tmp_path: Path, monkeypatch):
 
     norm = math.sqrt(sum(x * x for x in payload["embedding"]))
     assert abs(norm - 1.0) < 1.0e-6
+
+
+def test_unknown_backend_returns_501(tmp_path: Path, monkeypatch):
+    uploads = tmp_path / "uploads"
+    uploads.mkdir(parents=True, exist_ok=True)
+    (uploads / "a.mp4").write_bytes(b"fake-mp4")
+
+    monkeypatch.setenv("UPLOADS_DIR", str(uploads))
+    monkeypatch.setenv("EMBEDDING_BACKEND", "nope")
+    get_settings.cache_clear()
+
+    client = TestClient(app)
+    r = client.post("/v1/embed/video", json={"storage_key": "a.mp4"})
+    assert r.status_code == 501
