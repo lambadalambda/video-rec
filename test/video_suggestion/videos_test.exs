@@ -117,6 +117,23 @@ defmodule VideoSuggestion.VideosTest do
     end
   end
 
+  describe "transcripts" do
+    test "set_video_transcript/2 stores transcript text" do
+      user = user_fixture()
+
+      assert {:ok, video} =
+               Videos.create_video(%{
+                 user_id: user.id,
+                 storage_key: "#{System.unique_integer([:positive])}.mp4",
+                 content_hash: :crypto.strong_rand_bytes(32)
+               })
+
+      assert {:ok, updated} = Videos.set_video_transcript(video.id, "hello world")
+      assert updated.transcript == "hello world"
+      assert Videos.get_video!(video.id).transcript == "hello world"
+    end
+  end
+
   describe "list_videos/1 (favorites metadata)" do
     test "includes favorites_count and favorited for the current user" do
       user1 = user_fixture()

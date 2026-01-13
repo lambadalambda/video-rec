@@ -103,6 +103,15 @@ defmodule VideoSuggestion.Videos do
     Repo.get_by!(VideoEmbedding, video_id: video_id)
   end
 
+  def set_video_transcript(video_id, transcript)
+      when is_integer(video_id) and is_binary(transcript) do
+    video = get_video!(video_id)
+
+    video
+    |> Video.transcript_changeset(%{transcript: transcript})
+    |> Repo.update()
+  end
+
   def create_video(attrs) do
     Multi.new()
     |> Multi.insert(:video, Video.changeset(%Video{}, attrs))
