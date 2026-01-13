@@ -82,4 +82,3 @@ defmodule VideoSuggestionWeb.Admin.RecommendationsLiveTest do
     :ok
   end
 end
-

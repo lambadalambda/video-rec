@@ -14,4 +14,3 @@ defmodule VideoSuggestion.Repo.Migrations.CreateVideoEmbeddings do
     create index(:video_embeddings, [:version])
   end
 end
-

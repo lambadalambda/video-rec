@@ -23,4 +23,3 @@ defmodule VideoSuggestion.Reco.CaptionEmbeddingTest do
     assert {:error, :empty} = CaptionEmbedding.embed("   ")
   end
 end
-

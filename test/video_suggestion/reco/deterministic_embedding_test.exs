@@ -17,4 +17,3 @@ defmodule VideoSuggestion.Reco.DeterministicEmbeddingTest do
     assert_in_delta norm, 1.0, 1.0e-6
   end
 end
-

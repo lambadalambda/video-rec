@@ -52,4 +52,3 @@ defmodule VideoSuggestion.Reco.CaptionEmbedding do
     end
   end
 end
-

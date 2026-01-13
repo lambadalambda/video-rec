@@ -19,4 +19,3 @@ defmodule VideoSuggestion.Videos.VideoEmbedding do
     |> unique_constraint(:video_id)
   end
 end
-

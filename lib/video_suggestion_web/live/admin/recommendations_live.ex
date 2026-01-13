@@ -78,4 +78,3 @@ defmodule VideoSuggestionWeb.Admin.RecommendationsLive do
     :io_lib.format("~.4f", [score]) |> IO.iodata_to_binary()
   end
 end
-
