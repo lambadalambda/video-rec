@@ -6,7 +6,7 @@ defmodule VideoSuggestion.Tags.Tag do
   schema "tags" do
     field :name, :string
     field :version, :string
-    field :vector, {:array, :float}
+    field :vector, Pgvector.Ecto.Vector
 
     timestamps(type: :utc_datetime)
   end

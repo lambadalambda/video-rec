@@ -5,7 +5,7 @@ defmodule VideoSuggestion.Videos.VideoEmbedding do
 
   schema "video_embeddings" do
     field :version, :string
-    field :vector, {:array, :float}
+    field :vector, Pgvector.Ecto.Vector
 
     belongs_to :video, VideoSuggestion.Videos.Video
 
