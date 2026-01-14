@@ -41,6 +41,28 @@ def test_embed_video_returns_normalized_vector(tmp_path: Path, monkeypatch):
     assert abs(norm - 1.0) < 1.0e-6
 
 
+def test_embed_video_frames_returns_normalized_vector(monkeypatch):
+    monkeypatch.setenv("EMBEDDING_BACKEND", "deterministic")
+    monkeypatch.setenv("EMBEDDING_DIMS", "8")
+    get_settings.cache_clear()
+
+    client = TestClient(app)
+    r = client.post(
+        "/v1/embed/video_frames",
+        data={"caption": "Cats and dogs", "dims": "8"},
+        files=[("frames", ("frame-0.png", b"fake-png", "image/png"))],
+    )
+    assert r.status_code == 200
+    payload = r.json()
+
+    assert payload["version"] == "caption_v1"
+    assert payload["dims"] == 8
+    assert len(payload["embedding"]) == 8
+
+    norm = math.sqrt(sum(x * x for x in payload["embedding"]))
+    assert abs(norm - 1.0) < 1.0e-6
+
+
 def test_embed_text_returns_normalized_vector(monkeypatch):
     monkeypatch.setenv("EMBEDDING_BACKEND", "deterministic")
     monkeypatch.setenv("EMBEDDING_DIMS", "8")
@@ -118,6 +140,33 @@ def test_transcribe_video_missing_file_returns_404(tmp_path: Path, monkeypatch):
     client = TestClient(app)
     r = client.post("/v1/transcribe/video", json={"storage_key": "missing.mp4"})
     assert r.status_code == 404
+
+
+def test_transcribe_audio_without_whisper_returns_501(monkeypatch):
+    monkeypatch.setenv("WHISPER_BACKEND", "openai")
+    get_settings.cache_clear()
+
+    # Make this deterministic even if whisper is installed locally.
+    from embedding_worker.transcription import get_openai_whisper_transcriber, get_whisper_transcriber
+
+    get_openai_whisper_transcriber.cache_clear()
+    get_whisper_transcriber.cache_clear()
+
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "whisper":
+            raise ModuleNotFoundError("No module named 'whisper'")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    client = TestClient(app)
+    r = client.post(
+        "/v1/transcribe/audio",
+        files=[("audio", ("audio.wav", b"fake-wav", "audio/wav"))],
+    )
+    assert r.status_code == 501
 
 
 def test_transcribe_video_without_whisper_returns_501(tmp_path: Path, monkeypatch):

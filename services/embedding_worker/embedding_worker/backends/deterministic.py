@@ -1,4 +1,6 @@
+import hashlib
 from pathlib import Path
+from typing import Optional
 
 from ..embeddings import caption_embedding, seed_embedding, sha256_file
 from .base import EmbeddingBackend, EmbeddingResult
@@ -18,6 +20,28 @@ class DeterministicBackend(EmbeddingBackend):
             version="hash_v1",
             embedding=seed_embedding(seed, dims),
             transcript=None,
+        )
+
+    def embed_video_frames(
+        self, *, frames: list[bytes], caption: str, dims: int, transcript: Optional[str] = None
+    ) -> EmbeddingResult:
+        if caption and caption.strip():
+            return EmbeddingResult(
+                version="caption_v1",
+                embedding=caption_embedding(caption, dims),
+                transcript=transcript,
+            )
+
+        h = hashlib.sha256()
+        for frame in frames or []:
+            if frame:
+                h.update(frame)
+
+        seed = h.digest()
+        return EmbeddingResult(
+            version="frames_hash_v1",
+            embedding=seed_embedding(seed, dims),
+            transcript=transcript,
         )
 
     def embed_text(self, *, text: str, dims: int) -> EmbeddingResult:

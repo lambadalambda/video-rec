@@ -15,5 +15,10 @@ class EmbeddingBackend:
     ) -> EmbeddingResult:
         raise NotImplementedError
 
+    def embed_video_frames(
+        self, *, frames: List[bytes], caption: str, dims: int, transcript: Optional[str] = None
+    ) -> EmbeddingResult:
+        raise NotImplementedError
+
     def embed_text(self, *, text: str, dims: int) -> EmbeddingResult:
         raise NotImplementedError
