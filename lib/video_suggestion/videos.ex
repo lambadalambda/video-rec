@@ -8,7 +8,6 @@ defmodule VideoSuggestion.Videos do
   alias VideoSuggestion.Repo
   alias VideoSuggestion.Reco.CaptionEmbedding
   alias VideoSuggestion.Reco.DeterministicEmbedding
-  alias VideoSuggestion.Reco.Vector
   alias VideoSuggestion.Videos.Favorite
   alias VideoSuggestion.Videos.Video
   alias VideoSuggestion.Videos.VideoEmbedding
@@ -215,14 +214,15 @@ defmodule VideoSuggestion.Videos do
 
   defp create_video_embedding(%Video{} = video) do
     caption = video.caption || ""
+    dims = Application.get_env(:video_suggestion, :embedding_dims, 1536)
 
     {vector, version} =
-      case CaptionEmbedding.embed(caption) do
+      case CaptionEmbedding.embed(caption, dims: dims) do
         {:ok, v} ->
           {v, "caption_v1"}
 
         {:error, _} ->
-          {DeterministicEmbedding.from_seed(video.content_hash), "hash_v1"}
+          {DeterministicEmbedding.from_seed(video.content_hash, dims: dims), "hash_v1"}
       end
 
     %VideoEmbedding{}
@@ -232,7 +232,7 @@ defmodule VideoSuggestion.Videos do
 
   @spec similar_videos(integer(), keyword()) ::
           {:ok, %{version: binary(), items: [%{video: Video.t(), score: float()}]}}
-          | {:error, :embedding_missing | :empty_vector}
+          | {:error, :embedding_missing}
   def similar_videos(video_id, opts \\ []) when is_integer(video_id) do
     limit = Keyword.get(opts, :limit, 20)
 
@@ -243,37 +243,23 @@ defmodule VideoSuggestion.Videos do
     else
       version = embedding.version
 
-      candidates =
+      query_vector = embedding.vector
+
+      items =
         from(v in Video,
           join: e in VideoEmbedding,
           on: e.video_id == v.id,
           where: v.id != ^video_id and e.version == ^version,
-          select: {v, e.vector}
+          order_by: fragment("? <=> ?", e.vector, ^query_vector),
+          limit: ^limit,
+          select: %{
+            video: v,
+            score: fragment("1 - (? <=> ?)", e.vector, ^query_vector)
+          }
         )
         |> Repo.all()
 
-      query_vector = embedding.vector
-
-      candidates
-      |> Enum.reduce_while({:ok, []}, fn {video, vector}, {:ok, acc} ->
-        case Vector.dot(query_vector, vector) do
-          {:ok, score} -> {:cont, {:ok, [%{video: video, score: score} | acc]}}
-          {:error, :dimension_mismatch} -> {:cont, {:ok, acc}}
-          {:error, :empty_vector} -> {:halt, {:error, :empty_vector}}
-        end
-      end)
-      |> case do
-        {:ok, scored} ->
-          items =
-            scored
-            |> Enum.sort_by(& &1.score, :desc)
-            |> Enum.take(limit)
-
-          {:ok, %{version: version, items: items}}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+      {:ok, %{version: version, items: items}}
     end
   end
 
@@ -287,14 +273,16 @@ defmodule VideoSuggestion.Videos do
     if query_vector == [] do
       {:error, :empty_vector}
     else
-      dim = length(query_vector)
+      query_vector = Pgvector.new(query_vector)
 
       query =
         from(v in Video,
           join: e in VideoEmbedding,
           on: e.video_id == v.id,
-          where: fragment("COALESCE(array_length(?, 1), 0)", e.vector) == ^dim,
-          select: {v, e.vector}
+          select: %{
+            video: v,
+            score: fragment("1 - (? <=> ?)", e.vector, ^query_vector)
+          }
         )
 
       query =
@@ -309,30 +297,13 @@ defmodule VideoSuggestion.Videos do
             query
         end
 
-      query
-      |> Repo.all()
-      |> Enum.reduce({:ok, []}, fn {video, vector}, {:ok, acc} ->
-        case Vector.dot(query_vector, vector) do
-          {:ok, score} ->
-            {:ok, [%{video: video, score: score} | acc]}
+      query =
+        from([v, e] in query,
+          order_by: fragment("? <=> ?", e.vector, ^query_vector),
+          limit: ^limit
+        )
 
-          {:error, :dimension_mismatch} ->
-            {:ok, acc}
-
-          {:error, :empty_vector} ->
-            {:ok, acc}
-        end
-      end)
-      |> case do
-        {:ok, scored} ->
-          {:ok,
-           scored
-           |> Enum.sort_by(& &1.score, :desc)
-           |> Enum.take(limit)}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+      {:ok, Repo.all(query)}
     end
   end
 end

@@ -188,7 +188,7 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLive do
       select: %{
         video: v,
         embedding_version: e.version,
-        embedding_dims: fragment("COALESCE(array_length(?, 1), 0)", e.vector)
+        embedding_dims: fragment("COALESCE(vector_dims(?), 0)", e.vector)
       }
     )
     |> Repo.all()
@@ -208,9 +208,6 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLive do
 
       {:error, :embedding_missing} ->
         {[], nil, "This video has no embedding yet. Run mix videos.embed_visual."}
-
-      {:error, :empty_vector} ->
-        {[], nil, "This video's embedding vector is empty."}
     end
   end
 

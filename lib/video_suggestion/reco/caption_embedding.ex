@@ -7,7 +7,7 @@ defmodule VideoSuggestion.Reco.CaptionEmbedding do
 
   alias VideoSuggestion.Reco.Vector
 
-  @default_dims 64
+  @default_dims Application.compile_env(:video_suggestion, :embedding_dims, 1536)
 
   @spec dims() :: pos_integer()
   def dims, do: @default_dims
