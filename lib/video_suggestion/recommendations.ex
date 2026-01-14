@@ -52,6 +52,7 @@ defmodule VideoSuggestion.Recommendations do
         select: e.vector
       )
       |> Repo.all()
+      |> Enum.map(&as_list_vector/1)
 
     case vectors do
       [] ->
@@ -74,21 +75,24 @@ defmodule VideoSuggestion.Recommendations do
              | :zero_norm}
   def rank_videos_for_user(user_id, opts \\ []) when is_integer(user_id) do
     limit = Keyword.get(opts, :limit, 25)
-    candidate_limit = Keyword.get(opts, :candidate_limit, 500)
 
     with {:ok, taste} <- taste_vector(user_id, opts) do
-      candidates = candidate_embeddings(user_id, candidate_limit)
+      taste_vec = Pgvector.new(taste)
 
-      case Ranking.rank_by_dot(taste, candidates) do
-        {:ok, scored} ->
-          {:ok,
-           scored
-           |> Enum.take(limit)
-           |> Enum.map(fn {candidate, score} -> {candidate.id, score} end)}
+      rows =
+        from(v in Video,
+          join: e in VideoEmbedding,
+          on: e.video_id == v.id,
+          left_join: f in Favorite,
+          on: f.video_id == v.id and f.user_id == ^user_id,
+          where: is_nil(f.id),
+          order_by: fragment("? <=> ?", e.vector, ^taste_vec),
+          limit: ^limit,
+          select: {v.id, fragment("1 - (? <=> ?)", e.vector, ^taste_vec)}
+        )
+        |> Repo.all()
 
-        {:error, reason} ->
-          {:error, reason}
-      end
+      {:ok, rows}
     end
   end
 
@@ -105,74 +109,61 @@ defmodule VideoSuggestion.Recommendations do
     diversify_lambda = Keyword.get(opts, :diversify_lambda, 0.7)
 
     with {:ok, taste} <- taste_vector(user_id, opts) do
-      dim = length(taste)
+      taste_vec = Pgvector.new(taste)
 
-      candidates =
-        candidate_embeddings(user_id, candidate_limit)
-        |> Enum.reject(fn candidate ->
-          candidate.vector == [] or length(candidate.vector) != dim
-        end)
+      candidates_query =
+        from(v in Video,
+          join: e in VideoEmbedding,
+          on: e.video_id == v.id,
+          left_join: f in Favorite,
+          on: f.video_id == v.id and f.user_id == ^user_id,
+          where: is_nil(f.id),
+          order_by: fragment("? <=> ?", e.vector, ^taste_vec),
+          select: %{id: v.id, vector: e.vector}
+        )
+
+      candidates_query =
+        if is_integer(candidate_limit) and candidate_limit > 0 do
+          from(c in candidates_query, limit: ^candidate_limit)
+        else
+          candidates_query
+        end
+
+      candidates = Repo.all(candidates_query)
 
       if candidates == [] do
         {:error, :empty}
       else
-        case Ranking.rank_by_dot(taste, candidates) do
-          {:ok, scored} ->
-            ranked = Enum.map(scored, fn {candidate, _score} -> candidate end)
+        {pool, rest} =
+          if is_integer(diversify_pool_size) and diversify_pool_size > 0 do
+            Enum.split(candidates, diversify_pool_size)
+          else
+            {[], candidates}
+          end
 
-            {pool, rest} =
-              if is_integer(diversify_pool_size) and diversify_pool_size > 0 do
-                Enum.split(ranked, diversify_pool_size)
-              else
-                {[], ranked}
+        ranked_ids =
+          case pool do
+            [] ->
+              Enum.map(candidates, & &1.id)
+
+            pool ->
+              pool =
+                Enum.map(pool, fn %{id: id, vector: vector} ->
+                  %{id: id, vector: as_list_vector(vector)}
+                end)
+
+              case Ranking.mmr(taste, pool, length(pool), lambda: diversify_lambda) do
+                {:ok, diverse} ->
+                  Enum.map(diverse, & &1.id) ++ Enum.map(rest, & &1.id)
+
+                {:error, _reason} ->
+                  Enum.map(candidates, & &1.id)
               end
+          end
 
-            ranked =
-              case pool do
-                [] ->
-                  ranked
-
-                pool ->
-                  case Ranking.mmr(taste, pool, length(pool), lambda: diversify_lambda) do
-                    {:ok, diverse} -> diverse ++ rest
-                    {:error, _reason} -> ranked
-                  end
-              end
-
-            {:ok, Enum.map(ranked, & &1.id)}
-
-          {:error, reason} ->
-            {:error, reason}
-        end
+        {:ok, ranked_ids}
       end
     end
-  end
-
-  defp candidate_embeddings(user_id, limit) when is_integer(user_id) and is_integer(limit) do
-    from(v in Video,
-      join: e in VideoEmbedding,
-      on: e.video_id == v.id,
-      left_join: f in Favorite,
-      on: f.video_id == v.id and f.user_id == ^user_id,
-      where: is_nil(f.id),
-      order_by: [desc: v.inserted_at, desc: v.id],
-      limit: ^limit,
-      select: %{id: v.id, vector: e.vector}
-    )
-    |> Repo.all()
-  end
-
-  defp candidate_embeddings(user_id, nil) when is_integer(user_id) do
-    from(v in Video,
-      join: e in VideoEmbedding,
-      on: e.video_id == v.id,
-      left_join: f in Favorite,
-      on: f.video_id == v.id and f.user_id == ^user_id,
-      where: is_nil(f.id),
-      order_by: [desc: v.inserted_at, desc: v.id],
-      select: %{id: v.id, vector: e.vector}
-    )
-    |> Repo.all()
   end
 
   defp apply_favorite_long_term(profile, user_id, opts) do
@@ -186,6 +177,7 @@ defmodule VideoSuggestion.Recommendations do
         select: e.vector
       )
       |> Repo.all()
+      |> Enum.map(&as_list_vector/1)
 
     Enum.reduce_while(vectors, profile, fn vector, profile ->
       case TasteProfile.update_long(profile, vector, weight) do
@@ -212,6 +204,7 @@ defmodule VideoSuggestion.Recommendations do
 
     Enum.reduce_while(rows, profile, fn {vector, watch_ms}, profile ->
       weight = watch_weight(watch_ms, opts)
+      vector = as_list_vector(vector)
 
       case TasteProfile.update_session(profile, vector, alpha, weight) do
         {:ok, profile} -> {:cont, profile}
@@ -229,4 +222,7 @@ defmodule VideoSuggestion.Recommendations do
   end
 
   defp watch_weight(_watch_ms, _opts), do: 1.0
+
+  defp as_list_vector(vector) when is_list(vector), do: vector
+  defp as_list_vector(%Pgvector{} = vector), do: Pgvector.to_list(vector)
 end
