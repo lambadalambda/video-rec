@@ -24,7 +24,7 @@ defmodule VideoSuggestion.TagsTest do
   test "ingest_tags/2 normalizes, dedupes, and stores embeddings" do
     assert :ok =
              Tags.ingest_tags(
-               [" Cats ", "dogs", "cats", "", "   "],
+               [" Cats ", "dogs", "cats", "", "   ", "# ignore-me"],
                dims: 2,
                embedding_client: FakeEmbeddingClient
              )

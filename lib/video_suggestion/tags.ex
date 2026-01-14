@@ -18,6 +18,7 @@ defmodule VideoSuggestion.Tags do
     tag_names
     |> Enum.map(&normalize_tag_name/1)
     |> Enum.reject(&(&1 == ""))
+    |> Enum.reject(&String.starts_with?(&1, "#"))
     |> Enum.uniq()
     |> Enum.each(fn name ->
       tag = Repo.get_by(Tag, name: name)
