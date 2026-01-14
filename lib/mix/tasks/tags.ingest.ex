@@ -57,11 +57,15 @@ defmodule Mix.Tasks.Tags.Ingest do
     tag_version_prefix = Keyword.get(opts, :tag_version_prefix, "qwen3_vl")
 
     dims =
-      case Keyword.get(opts, :dims) do
-        dims when is_integer(dims) and dims > 0 ->
-          dims
+      cond do
+        is_integer(opts[:dims]) and opts[:dims] > 0 ->
+          opts[:dims]
 
-        _ ->
+        is_integer(Application.get_env(:video_suggestion, :embedding_dims)) and
+            Application.get_env(:video_suggestion, :embedding_dims) > 0 ->
+          Application.get_env(:video_suggestion, :embedding_dims)
+
+        true ->
           infer_dims!(video_version_prefix)
       end
 
@@ -85,16 +89,16 @@ defmodule Mix.Tasks.Tags.Ingest do
   end
 
   defp infer_dims!(video_version_prefix) do
-    vector =
+    dims =
       from(e in VideoEmbedding,
         where: like(e.version, ^"#{video_version_prefix}%"),
         limit: 1,
-        select: e.vector
+        select: fragment("vector_dims(?)", e.vector)
       )
       |> Repo.one()
 
-    if is_list(vector) and vector != [] do
-      length(vector)
+    if is_integer(dims) and dims > 0 do
+      dims
     else
       Mix.raise("Could not infer dims from video embeddings. Pass --dims.")
     end

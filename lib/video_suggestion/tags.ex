@@ -5,7 +5,6 @@ defmodule VideoSuggestion.Tags do
 
   alias VideoSuggestion.EmbeddingWorkerClient
   alias VideoSuggestion.Repo
-  alias VideoSuggestion.Reco.Tagging
   alias VideoSuggestion.Tags.Tag
   alias VideoSuggestion.Tags.VideoTagSuggestion
   alias VideoSuggestion.Videos.Video
@@ -46,23 +45,13 @@ defmodule VideoSuggestion.Tags do
     video_version_prefix = Keyword.get(opts, :video_version_prefix, "qwen3_vl")
     tag_version_prefix = Keyword.get(opts, :tag_version_prefix, "qwen3_vl")
 
-    tags =
-      from(t in Tag,
-        where: not is_nil(t.vector),
-        where: like(t.version, ^"#{tag_version_prefix}%"),
-        select: %{id: t.id, name: t.name, vector: t.vector, version: t.version}
-      )
-      |> Repo.all()
-
-    tags_by_dim = Enum.group_by(tags, &length(&1.vector))
-
     {updated_videos, skipped_videos} =
       do_refresh_video_tag_suggestions(
-        tags_by_dim,
         top_k,
         batch_size,
         limit,
         video_version_prefix,
+        tag_version_prefix,
         0,
         0,
         0
@@ -133,11 +122,11 @@ defmodule VideoSuggestion.Tags do
   end
 
   defp do_refresh_video_tag_suggestions(
-         tags_by_dim,
          top_k,
          batch_size,
          limit,
          video_version_prefix,
+         tag_version_prefix,
          after_video_id,
          updated_videos,
          skipped_videos
@@ -163,19 +152,13 @@ defmodule VideoSuggestion.Tags do
                     {updated_videos, skipped_videos}
 
                   true ->
-                    tags = Map.get(tags_by_dim, length(vector), [])
+                    tags = top_tags_for_video(vector, tag_version_prefix, top_k)
 
                     if tags == [] do
                       {updated_videos, skipped_videos + 1}
                     else
-                      case Tagging.top_k(vector, tags, top_k) do
-                        {:ok, scored} ->
-                          persist_video_suggestions(video_id, version, scored)
-                          {updated_videos + 1, skipped_videos}
-
-                        {:error, _} ->
-                          {updated_videos, skipped_videos + 1}
-                      end
+                      persist_video_suggestions(video_id, version, tags)
+                      {updated_videos + 1, skipped_videos}
                     end
                 end
               end)
@@ -183,11 +166,11 @@ defmodule VideoSuggestion.Tags do
             last_id = rows |> List.last() |> elem(0)
 
             do_refresh_video_tag_suggestions(
-              tags_by_dim,
               top_k,
               batch_size,
               limit,
               video_version_prefix,
+              tag_version_prefix,
               last_id,
               updated_videos,
               skipped_videos
@@ -218,13 +201,13 @@ defmodule VideoSuggestion.Tags do
       )
 
       rows =
-        Enum.map(scored, fn {tag, score} ->
+        Enum.map(scored, fn %{tag_id: tag_id, tag_version: tag_version, score: score} ->
           %{
             video_id: video_id,
-            tag_id: tag.id,
+            tag_id: tag_id,
             score: score,
             video_embedding_version: video_version,
-            tag_embedding_version: tag.version,
+            tag_embedding_version: tag_version,
             inserted_at: now,
             updated_at: now
           }
@@ -234,6 +217,21 @@ defmodule VideoSuggestion.Tags do
     end)
 
     :ok
+  end
+
+  defp top_tags_for_video(video_vector, tag_version_prefix, top_k) do
+    from(t in Tag,
+      where: not is_nil(t.vector),
+      where: like(t.version, ^"#{tag_version_prefix}%"),
+      order_by: fragment("? <=> ?", t.vector, ^video_vector),
+      limit: ^top_k,
+      select: %{
+        tag_id: t.id,
+        tag_version: t.version,
+        score: fragment("1 - (? <=> ?)", t.vector, ^video_vector)
+      }
+    )
+    |> Repo.all()
   end
 
   defp embed_and_upsert_tag(name, dims, embedding_client) do
@@ -258,8 +256,14 @@ defmodule VideoSuggestion.Tags do
   end
 
   defp embedded_with_dims?(%Tag{vector: vector, version: version}, dims) do
-    is_binary(version) and is_list(vector) and length(vector) == dims
+    is_binary(version) and vector_dims(vector) == dims
   end
+
+  defp vector_dims(nil), do: 0
+
+  defp vector_dims(vector) when is_list(vector), do: length(vector)
+
+  defp vector_dims(%Pgvector{data: <<dim::unsigned-16, _::unsigned-16, _::binary>>}), do: dim
 
   defp normalize_tag_name(raw) do
     raw
