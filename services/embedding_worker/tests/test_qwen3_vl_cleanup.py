@@ -120,3 +120,41 @@ def test_normalize_video_frames_to_common_size_resizes_mismatched_frames():
     assert normalized is not None
     assert len(normalized) == 3
     assert all(getattr(img, "size", None) == normalized[0].size for img in normalized)
+
+
+def test_process_with_adaptive_max_frames_falls_back_to_ffmpeg_when_video_fps_missing(monkeypatch):
+    extracted_frames = ["frame-a", "frame-b"]
+    extract_calls = []
+
+    def fake_extract_video_frames_ffmpeg(*, video_path: str, fps: float, max_frames: int):
+        extract_calls.append((video_path, fps, max_frames))
+        return extracted_frames
+
+    monkeypatch.setattr(qwen3_vl, "_extract_video_frames_ffmpeg", fake_extract_video_frames_ffmpeg)
+
+    class DummyEmbedder:
+        def __init__(self):
+            self.calls = []
+            self.cleanup_calls = 0
+            self.attempt = 0
+
+        def process(self, inputs, normalize=True):
+            self.calls.append(inputs)
+            self.attempt += 1
+            if self.attempt == 1:
+                raise KeyError("video_fps")
+            return "ok"
+
+        def maybe_cleanup(self):
+            self.cleanup_calls += 1
+
+    embedder = DummyEmbedder()
+    base_input = {"video": "/tmp/video.mp4", "text": "hello", "fps": 2.5, "max_frames": 10}
+
+    result = qwen3_vl._process_with_adaptive_max_frames(embedder, base_input)
+
+    assert result == "ok"
+    assert extract_calls == [("/tmp/video.mp4", 2.5, 10)]
+    assert len(embedder.calls) == 2
+    assert embedder.calls[1][0]["video"] == extracted_frames
+    assert embedder.cleanup_calls == 1

@@ -451,6 +451,29 @@ def _process_with_adaptive_max_frames(embedder, base_input: Dict[str, Any]):
     for _attempt in range(6):
         try:
             return embedder.process(inputs, normalize=True)
+        except KeyError as e:
+            if not _is_video_fps_missing_error(e):
+                raise
+
+            current_input = inputs[0] if inputs else base_input
+            video = current_input.get("video")
+            if not isinstance(video, (str, Path)):
+                raise
+
+            extracted = _extract_video_frames_ffmpeg(
+                video_path=str(video),
+                fps=float(current_input.get("fps") or 1.0),
+                max_frames=int(current_input.get("max_frames") or 1),
+            )
+
+            if extracted:
+                normalized = _normalize_video_frames_to_common_size(extracted) or extracted
+                logger.warning("qwen3_vl missing_video_fps retrying_with_ffmpeg_frames")
+                inputs = [{**current_input, "video": normalized}]
+                embedder.maybe_cleanup()
+                continue
+
+            raise
         except RuntimeError as e:
             if not _is_video_frame_stack_size_mismatch(e):
                 raise
@@ -515,6 +538,16 @@ def _process_with_adaptive_max_frames(embedder, base_input: Dict[str, Any]):
 def _is_mm_video_token_mismatch(error: Exception) -> bool:
     msg = str(error)
     return "Mismatch in `video` token count between text and `input_ids`" in msg
+
+
+def _is_video_fps_missing_error(error: Exception) -> bool:
+    if not isinstance(error, KeyError):
+        return False
+
+    if not error.args:
+        return False
+
+    return error.args[0] == "video_fps"
 
 
 def _is_video_frame_stack_size_mismatch(error: Exception) -> bool:
