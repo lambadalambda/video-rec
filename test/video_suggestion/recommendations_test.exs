@@ -9,6 +9,8 @@ defmodule VideoSuggestion.RecommendationsTest do
 
   import VideoSuggestion.AccountsFixtures
 
+  @dims Application.compile_env(:video_suggestion, :embedding_dims, 1536)
+
   describe "taste_vector_from_favorites/1" do
     test "returns :empty when the user has no favorites" do
       user = user_fixture()
@@ -40,7 +42,11 @@ defmodule VideoSuggestion.RecommendationsTest do
       assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user.id, a.id)
       assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user.id, b.id)
 
-      assert {:ok, [x, y]} = Recommendations.taste_vector_from_favorites(user.id)
+      assert {:ok, taste} = Recommendations.taste_vector_from_favorites(user.id)
+
+      x = Enum.at(taste, 0)
+      y = Enum.at(taste, 1)
+
       assert_in_delta x, :math.sqrt(0.5), 1.0e-6
       assert_in_delta y, :math.sqrt(0.5), 1.0e-6
     end
@@ -175,14 +181,15 @@ defmodule VideoSuggestion.RecommendationsTest do
                  watch_ms: 100_000
                })
 
-      assert {:ok, [x, y]} = Recommendations.taste_vector(user.id)
-      assert x < 0.2
-      assert y > 0.9
+      assert {:ok, taste} = Recommendations.taste_vector(user.id)
+      assert Enum.at(taste, 0) < 0.2
+      assert Enum.at(taste, 1) > 0.9
     end
   end
 
   defp set_embedding!(video_id, vector) when is_integer(video_id) and is_list(vector) do
     embedding = Videos.get_video_embedding!(video_id)
+    vector = pad_vec(vector)
 
     {:ok, _} =
       embedding
@@ -190,5 +197,9 @@ defmodule VideoSuggestion.RecommendationsTest do
       |> Repo.update()
 
     :ok
+  end
+
+  defp pad_vec(values) when is_list(values) do
+    values ++ List.duplicate(0.0, max(@dims - length(values), 0))
   end
 end

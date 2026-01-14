@@ -9,6 +9,8 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
   alias VideoSuggestion.Repo
   alias VideoSuggestion.Videos
 
+  @dims Application.compile_env(:video_suggestion, :embedding_dims, 1536)
+
   test "feed videos fit within the viewport without native controls", %{conn: conn} do
     user = user_fixture()
 
@@ -268,12 +270,12 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
         content_hash: :crypto.strong_rand_bytes(32)
       })
 
-    {:ok, _} = Videos.upsert_video_embedding(seed.id, "test", [1.0, 0.0])
-    {:ok, _} = Videos.upsert_video_embedding(good.id, "test", [0.9, 0.1])
-    {:ok, _} = Videos.upsert_video_embedding(bad.id, "test", [-1.0, 0.0])
+    {:ok, _} = Videos.upsert_video_embedding(seed.id, "test", pad_vec([1.0, 0.0]))
+    {:ok, _} = Videos.upsert_video_embedding(good.id, "test", pad_vec([0.9, 0.1]))
+    {:ok, _} = Videos.upsert_video_embedding(bad.id, "test", pad_vec([-1.0, 0.0]))
 
     Enum.each(filler_ids, fn id ->
-      {:ok, _} = Videos.upsert_video_embedding(id, "test", [-2.0, 0.0])
+      {:ok, _} = Videos.upsert_video_embedding(id, "test", pad_vec([-2.0, 0.0]))
     end)
 
     assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user.id, seed.id)
@@ -335,12 +337,12 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
         content_hash: :crypto.strong_rand_bytes(32)
       })
 
-    {:ok, _} = Videos.upsert_video_embedding(seed.id, "test", [1.0, 0.0])
-    {:ok, _} = Videos.upsert_video_embedding(good.id, "test", [0.9, 0.1])
-    {:ok, _} = Videos.upsert_video_embedding(bad.id, "test", [-1.0, 0.0])
+    {:ok, _} = Videos.upsert_video_embedding(seed.id, "test", pad_vec([1.0, 0.0]))
+    {:ok, _} = Videos.upsert_video_embedding(good.id, "test", pad_vec([0.9, 0.1]))
+    {:ok, _} = Videos.upsert_video_embedding(bad.id, "test", pad_vec([-1.0, 0.0]))
 
     Enum.each(filler_ids, fn id ->
-      {:ok, _} = Videos.upsert_video_embedding(id, "test", [-2.0, 0.0])
+      {:ok, _} = Videos.upsert_video_embedding(id, "test", pad_vec([-2.0, 0.0]))
     end)
 
     assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user.id, seed.id)
@@ -396,11 +398,11 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
         content_hash: :crypto.strong_rand_bytes(32)
       })
 
-    {:ok, _} = Videos.upsert_video_embedding(seed.id, "test", [1.0, 0.0])
-    {:ok, _} = Videos.upsert_video_embedding(worst.id, "test", [-100.0, 0.0])
+    {:ok, _} = Videos.upsert_video_embedding(seed.id, "test", pad_vec([1.0, 0.0]))
+    {:ok, _} = Videos.upsert_video_embedding(worst.id, "test", pad_vec([-100.0, 0.0]))
 
     Enum.each(filler_ids, fn id ->
-      {:ok, _} = Videos.upsert_video_embedding(id, "test", [-2.0, 0.0])
+      {:ok, _} = Videos.upsert_video_embedding(id, "test", pad_vec([-2.0, 0.0]))
     end)
 
     assert {:ok, %{favorited: true}} = Videos.toggle_favorite(user.id, seed.id)
@@ -438,5 +440,9 @@ defmodule VideoSuggestionWeb.FeedLiveTest do
     })
 
     assert Repo.aggregate(Interaction, :count, :id) == 0
+  end
+
+  defp pad_vec(values) when is_list(values) do
+    values ++ List.duplicate(0.0, max(@dims - length(values), 0))
   end
 end

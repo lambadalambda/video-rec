@@ -9,6 +9,8 @@ defmodule VideoSuggestionWeb.Admin.RecommendationsLiveTest do
 
   import VideoSuggestion.AccountsFixtures
 
+  @dims Application.compile_env(:video_suggestion, :embedding_dims, 1536)
+
   test "admin can access recommendations page", %{conn: conn} do
     admin = user_fixture()
     assert admin.is_admin
@@ -73,6 +75,7 @@ defmodule VideoSuggestionWeb.Admin.RecommendationsLiveTest do
 
   defp set_embedding!(video_id, vector) when is_integer(video_id) and is_list(vector) do
     embedding = Videos.get_video_embedding!(video_id)
+    vector = pad_vec(vector)
 
     {:ok, _} =
       embedding
@@ -80,5 +83,9 @@ defmodule VideoSuggestionWeb.Admin.RecommendationsLiveTest do
       |> Repo.update()
 
     :ok
+  end
+
+  defp pad_vec(values) when is_list(values) do
+    values ++ List.duplicate(0.0, max(@dims - length(values), 0))
   end
 end

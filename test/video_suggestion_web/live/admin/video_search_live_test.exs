@@ -7,6 +7,8 @@ defmodule VideoSuggestionWeb.Admin.VideoSearchLiveTest do
 
   import VideoSuggestion.AccountsFixtures
 
+  @dims Application.compile_env(:video_suggestion, :embedding_dims, 1536)
+
   setup do
     stub_name = __MODULE__
 
@@ -17,7 +19,11 @@ defmodule VideoSuggestionWeb.Admin.VideoSearchLiveTest do
           payload = Jason.decode!(body)
 
           if payload["text"] == "cats" do
-            Req.Test.json(conn, %{version: "qwen3_vl_v1", dims: 2, embedding: [1.0, 0.0]})
+            Req.Test.json(conn, %{
+              version: "qwen3_vl_v1",
+              dims: @dims,
+              embedding: pad_vec([1.0, 0.0])
+            })
           else
             Plug.Conn.send_resp(conn, 400, "unexpected query")
           end
@@ -61,8 +67,8 @@ defmodule VideoSuggestionWeb.Admin.VideoSearchLiveTest do
         content_hash: :crypto.strong_rand_bytes(32)
       })
 
-    {:ok, _} = Videos.upsert_video_embedding(good.id, "qwen3_vl_v1", [1.0, 0.0])
-    {:ok, _} = Videos.upsert_video_embedding(bad.id, "qwen3_vl_v1", [-1.0, 0.0])
+    {:ok, _} = Videos.upsert_video_embedding(good.id, "qwen3_vl_v1", pad_vec([1.0, 0.0]))
+    {:ok, _} = Videos.upsert_video_embedding(bad.id, "qwen3_vl_v1", pad_vec([-1.0, 0.0]))
 
     {:ok, lv, _html} = live(conn, "/admin/search")
 
@@ -78,5 +84,9 @@ defmodule VideoSuggestionWeb.Admin.VideoSearchLiveTest do
     {good_pos, _} = :binary.match(html, "good")
     {bad_pos, _} = :binary.match(html, "bad")
     assert good_pos < bad_pos
+  end
+
+  defp pad_vec(values) when is_list(values) do
+    values ++ List.duplicate(0.0, max(@dims - length(values), 0))
   end
 end

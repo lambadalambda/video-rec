@@ -6,18 +6,22 @@ defmodule VideoSuggestion.TagsTest do
   alias VideoSuggestion.Videos
   alias VideoSuggestion.Videos.VideoEmbedding
 
+  @dims Application.compile_env(:video_suggestion, :embedding_dims, 1536)
+
   defmodule FakeEmbeddingClient do
-    def embed_text(text, %{dims: 2}) do
+    def embed_text(text, %{dims: dims}) when is_integer(dims) and dims > 0 do
       text = String.downcase(String.trim(to_string(text)))
 
-      embedding =
+      base =
         case text do
           "cats" -> [1.0, 0.0]
           "dogs" -> [0.0, 1.0]
           _ -> [0.0, 1.0]
         end
 
-      {:ok, %{"version" => "qwen3_vl_v1", "dims" => 2, "embedding" => embedding}}
+      embedding = base ++ List.duplicate(0.0, max(dims - length(base), 0))
+
+      {:ok, %{"version" => "qwen3_vl_v1", "dims" => dims, "embedding" => embedding}}
     end
   end
 
@@ -25,13 +29,15 @@ defmodule VideoSuggestion.TagsTest do
     assert :ok =
              Tags.ingest_tags(
                [" Cats ", "dogs", "cats", "", "   ", "# ignore-me"],
-               dims: 2,
+               dims: @dims,
                embedding_client: FakeEmbeddingClient
              )
 
     tags = Repo.all(from t in Tag, order_by: t.name)
     assert Enum.map(tags, & &1.name) == ["cats", "dogs"]
-    assert Enum.map(tags, & &1.vector) == [[1.0, 0.0], [0.0, 1.0]]
+    assert Enum.map(tags, &Pgvector.to_list(&1.vector)) ==
+             [pad_vec([1.0, 0.0]), pad_vec([0.0, 1.0])]
+
     assert Enum.all?(tags, &(&1.version == "qwen3_vl_v1"))
   end
 
@@ -58,11 +64,11 @@ defmodule VideoSuggestion.TagsTest do
         content_hash: :crypto.strong_rand_bytes(32)
       })
 
-    {:ok, _} = Videos.upsert_video_embedding(v1.id, "qwen3_vl_v1", [1.0, 0.0])
-    {:ok, _} = Videos.upsert_video_embedding(v2.id, "qwen3_vl_v1", [0.0, 1.0])
+    {:ok, _} = Videos.upsert_video_embedding(v1.id, "qwen3_vl_v1", pad_vec([1.0, 0.0]))
+    {:ok, _} = Videos.upsert_video_embedding(v2.id, "qwen3_vl_v1", pad_vec([0.0, 1.0]))
 
     assert :ok =
-             Tags.ingest_tags(["cats", "dogs"], dims: 2, embedding_client: FakeEmbeddingClient)
+             Tags.ingest_tags(["cats", "dogs"], dims: @dims, embedding_client: FakeEmbeddingClient)
 
     assert {:ok, %{updated_videos: 2}} =
              Tags.refresh_video_tag_suggestions(
@@ -113,12 +119,12 @@ defmodule VideoSuggestion.TagsTest do
         content_hash: :crypto.strong_rand_bytes(32)
       })
 
-    {:ok, _} = Videos.upsert_video_embedding(v1.id, "qwen3_vl_v1", [1.0, 0.0])
-    {:ok, _} = Videos.upsert_video_embedding(v2.id, "qwen3_vl_v1", [1.0, 0.0])
-    {:ok, _} = Videos.upsert_video_embedding(v3.id, "qwen3_vl_v1", [0.0, 1.0])
+    {:ok, _} = Videos.upsert_video_embedding(v1.id, "qwen3_vl_v1", pad_vec([1.0, 0.0]))
+    {:ok, _} = Videos.upsert_video_embedding(v2.id, "qwen3_vl_v1", pad_vec([1.0, 0.0]))
+    {:ok, _} = Videos.upsert_video_embedding(v3.id, "qwen3_vl_v1", pad_vec([0.0, 1.0]))
 
     assert :ok =
-             Tags.ingest_tags(["cats", "dogs"], dims: 2, embedding_client: FakeEmbeddingClient)
+             Tags.ingest_tags(["cats", "dogs"], dims: @dims, embedding_client: FakeEmbeddingClient)
 
     assert {:ok, %{updated_videos: 3}} = Tags.refresh_video_tag_suggestions(top_k: 1)
 
@@ -150,11 +156,11 @@ defmodule VideoSuggestion.TagsTest do
         content_hash: :crypto.strong_rand_bytes(32)
       })
 
-    {:ok, _} = Videos.upsert_video_embedding(v1.id, "qwen3_vl_v1", [1.0, 0.0])
-    {:ok, _} = Videos.upsert_video_embedding(v2.id, "qwen3_vl_v1", [0.8, 0.2])
+    {:ok, _} = Videos.upsert_video_embedding(v1.id, "qwen3_vl_v1", pad_vec([1.0, 0.0]))
+    {:ok, _} = Videos.upsert_video_embedding(v2.id, "qwen3_vl_v1", pad_vec([0.8, 0.2]))
 
     assert :ok =
-             Tags.ingest_tags(["cats"], dims: 2, embedding_client: FakeEmbeddingClient)
+             Tags.ingest_tags(["cats"], dims: @dims, embedding_client: FakeEmbeddingClient)
 
     assert {:ok, %{updated_videos: 2}} = Tags.refresh_video_tag_suggestions(top_k: 1)
 
@@ -164,5 +170,9 @@ defmodule VideoSuggestion.TagsTest do
     assert item1.video.id == v1.id
     assert item2.video.id == v2.id
     assert item1.score > item2.score
+  end
+
+  defp pad_vec(values) when is_list(values) do
+    values ++ List.duplicate(0.0, max(@dims - length(values), 0))
   end
 end

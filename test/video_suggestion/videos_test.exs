@@ -6,6 +6,8 @@ defmodule VideoSuggestion.VideosTest do
 
   import VideoSuggestion.AccountsFixtures
 
+  @dims Application.compile_env(:video_suggestion, :embedding_dims, 1536)
+
   describe "create_video/1" do
     test "creates a video for a user" do
       user = user_fixture()
@@ -41,7 +43,7 @@ defmodule VideoSuggestion.VideosTest do
       embedding = Videos.get_video_embedding!(video.id)
       assert embedding.video_id == video.id
       assert embedding.version == "caption_v1"
-      assert length(embedding.vector) == VideoSuggestion.Reco.CaptionEmbedding.dims()
+      assert length(Pgvector.to_list(embedding.vector)) == VideoSuggestion.Reco.CaptionEmbedding.dims()
     end
   end
 
@@ -150,11 +152,11 @@ defmodule VideoSuggestion.VideosTest do
       assert embedding.version in ["caption_v1", "hash_v1"]
 
       assert {:ok, _embedding} =
-               Videos.upsert_video_embedding(video.id, "qwen3_vl_v1", [0.0, 1.0])
+               Videos.upsert_video_embedding(video.id, "qwen3_vl_v1", pad_vec([0.0, 1.0]))
 
       embedding = Videos.get_video_embedding!(video.id)
       assert embedding.version == "qwen3_vl_v1"
-      assert embedding.vector == [0.0, 1.0]
+      assert Pgvector.to_list(embedding.vector) == pad_vec([0.0, 1.0])
     end
 
     test "upsert_video_embedding/3 inserts if the embedding record is missing" do
@@ -171,11 +173,11 @@ defmodule VideoSuggestion.VideosTest do
       {:ok, _} = Repo.delete(embedding)
 
       assert {:ok, _embedding} =
-               Videos.upsert_video_embedding(video.id, "qwen3_vl_v1", [0.25, 0.75])
+               Videos.upsert_video_embedding(video.id, "qwen3_vl_v1", pad_vec([0.25, 0.75]))
 
       embedding = Videos.get_video_embedding!(video.id)
       assert embedding.version == "qwen3_vl_v1"
-      assert embedding.vector == [0.25, 0.75]
+      assert Pgvector.to_list(embedding.vector) == pad_vec([0.25, 0.75])
     end
   end
 
@@ -207,9 +209,9 @@ defmodule VideoSuggestion.VideosTest do
           content_hash: :crypto.strong_rand_bytes(32)
         })
 
-      {:ok, _} = Videos.upsert_video_embedding(query.id, "test", [1.0, 0.0])
-      {:ok, _} = Videos.upsert_video_embedding(good.id, "test", [0.9, 0.1])
-      {:ok, _} = Videos.upsert_video_embedding(bad.id, "test", [-1.0, 0.0])
+      {:ok, _} = Videos.upsert_video_embedding(query.id, "test", pad_vec([1.0, 0.0]))
+      {:ok, _} = Videos.upsert_video_embedding(good.id, "test", pad_vec([0.9, 0.1]))
+      {:ok, _} = Videos.upsert_video_embedding(bad.id, "test", pad_vec([-1.0, 0.0]))
 
       assert {:ok, %{version: "test", items: items}} = Videos.similar_videos(query.id, limit: 2)
       assert length(items) == 2
@@ -263,9 +265,9 @@ defmodule VideoSuggestion.VideosTest do
           content_hash: :crypto.strong_rand_bytes(32)
         })
 
-      {:ok, _} = Videos.upsert_video_embedding(query.id, "test", [1.0, 0.0])
-      {:ok, _} = Videos.upsert_video_embedding(same_version.id, "test", [1.0, 0.0])
-      {:ok, _} = Videos.upsert_video_embedding(other_version.id, "other", [1.0, 0.0])
+      {:ok, _} = Videos.upsert_video_embedding(query.id, "test", pad_vec([1.0, 0.0]))
+      {:ok, _} = Videos.upsert_video_embedding(same_version.id, "test", pad_vec([1.0, 0.0]))
+      {:ok, _} = Videos.upsert_video_embedding(other_version.id, "other", pad_vec([1.0, 0.0]))
 
       assert {:ok, %{items: items}} = Videos.similar_videos(query.id, limit: 10)
       assert Enum.any?(items, &(&1.video.id == same_version.id))
@@ -301,12 +303,12 @@ defmodule VideoSuggestion.VideosTest do
           content_hash: :crypto.strong_rand_bytes(32)
         })
 
-      {:ok, _} = Videos.upsert_video_embedding(good.id, "test", [1.0, 0.0])
-      {:ok, _} = Videos.upsert_video_embedding(ok.id, "test", [0.9, 0.1])
-      {:ok, _} = Videos.upsert_video_embedding(bad.id, "test", [-1.0, 0.0])
+      {:ok, _} = Videos.upsert_video_embedding(good.id, "test", pad_vec([1.0, 0.0]))
+      {:ok, _} = Videos.upsert_video_embedding(ok.id, "test", pad_vec([0.9, 0.1]))
+      {:ok, _} = Videos.upsert_video_embedding(bad.id, "test", pad_vec([-1.0, 0.0]))
 
       assert {:ok, items} =
-               Videos.search_videos_by_embedding([1.0, 0.0], version: "test", limit: 2)
+               Videos.search_videos_by_embedding(pad_vec([1.0, 0.0]), version: "test", limit: 2)
 
       assert [%{video: first, score: first_score}, %{video: second, score: second_score}] = items
       assert first.id == good.id
@@ -342,5 +344,9 @@ defmodule VideoSuggestion.VideosTest do
       assert video_for_anon.favorites_count == 2
       assert video_for_anon.favorited == false
     end
+  end
+
+  defp pad_vec(values) when is_list(values) do
+    values ++ List.duplicate(0.0, max(@dims - length(values), 0))
   end
 end

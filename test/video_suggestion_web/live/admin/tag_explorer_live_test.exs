@@ -10,6 +10,8 @@ defmodule VideoSuggestionWeb.Admin.TagExplorerLiveTest do
 
   import VideoSuggestion.AccountsFixtures
 
+  @dims Application.compile_env(:video_suggestion, :embedding_dims, 1536)
+
   test "admin can access tag explorer pages", %{conn: conn} do
     admin = user_fixture()
     assert admin.is_admin
@@ -55,12 +57,12 @@ defmodule VideoSuggestionWeb.Admin.TagExplorerLiveTest do
         content_hash: :crypto.strong_rand_bytes(32)
       })
 
-    {:ok, _} = Videos.upsert_video_embedding(v1.id, "qwen3_vl_v1", [1.0, 0.0])
-    {:ok, _} = Videos.upsert_video_embedding(v2.id, "qwen3_vl_v1", [0.8, 0.2])
-    {:ok, _} = Videos.upsert_video_embedding(v3.id, "qwen3_vl_v1", [0.0, 1.0])
+    {:ok, _} = Videos.upsert_video_embedding(v1.id, "qwen3_vl_v1", pad_vec([1.0, 0.0]))
+    {:ok, _} = Videos.upsert_video_embedding(v2.id, "qwen3_vl_v1", pad_vec([0.8, 0.2]))
+    {:ok, _} = Videos.upsert_video_embedding(v3.id, "qwen3_vl_v1", pad_vec([0.0, 1.0]))
 
-    Repo.insert!(%Tag{name: "cats", version: "qwen3_vl_v1", vector: [1.0, 0.0]})
-    Repo.insert!(%Tag{name: "dogs", version: "qwen3_vl_v1", vector: [0.0, 1.0]})
+    Repo.insert!(%Tag{name: "cats", version: "qwen3_vl_v1", vector: pad_vec([1.0, 0.0])})
+    Repo.insert!(%Tag{name: "dogs", version: "qwen3_vl_v1", vector: pad_vec([0.0, 1.0])})
 
     assert {:ok, %{updated_videos: 3}} = Tags.refresh_video_tag_suggestions(top_k: 1)
 
@@ -85,5 +87,9 @@ defmodule VideoSuggestionWeb.Admin.TagExplorerLiveTest do
     {v1_pos, _} = :binary.match(html, "tag-v1")
     {v2_pos, _} = :binary.match(html, "tag-v2")
     assert v1_pos < v2_pos
+  end
+
+  defp pad_vec(values) when is_list(values) do
+    values ++ List.duplicate(0.0, max(@dims - length(values), 0))
   end
 end

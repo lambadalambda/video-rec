@@ -7,6 +7,8 @@ defmodule Mix.Tasks.Videos.EmbedVisualTest do
   alias VideoSuggestion.Uploads
   alias VideoSuggestion.Videos
 
+  @dims Application.compile_env(:video_suggestion, :embedding_dims, 1536)
+
   setup do
     stub_name = __MODULE__
 
@@ -19,7 +21,11 @@ defmodule Mix.Tasks.Videos.EmbedVisualTest do
           if payload["transcribe"] != false do
             Plug.Conn.send_resp(conn, 400, "expected transcribe=false")
           else
-            Req.Test.json(conn, %{version: "qwen3_vl_v1", dims: 2, embedding: [0.25, 0.75]})
+            Req.Test.json(conn, %{
+              version: "qwen3_vl_v1",
+              dims: @dims,
+              embedding: pad_vec([0.25, 0.75])
+            })
           end
 
         _ ->
@@ -63,7 +69,7 @@ defmodule Mix.Tasks.Videos.EmbedVisualTest do
 
     embedding = Videos.get_video_embedding!(video.id)
     assert embedding.version == "qwen3_vl_v1"
-    assert embedding.vector == [0.25, 0.75]
+    assert Pgvector.to_list(embedding.vector) == pad_vec([0.25, 0.75])
   end
 
   test "skips videos already embedded with qwen3_vl_v1 unless --force" do
@@ -78,7 +84,7 @@ defmodule Mix.Tasks.Videos.EmbedVisualTest do
                content_hash: :crypto.strong_rand_bytes(32)
              })
 
-    assert {:ok, _} = Videos.upsert_video_embedding(video.id, "qwen3_vl_v1", [1.0, 0.0])
+    assert {:ok, _} = Videos.upsert_video_embedding(video.id, "qwen3_vl_v1", pad_vec([1.0, 0.0]))
 
     Uploads.ensure_dir!()
     File.write!(Uploads.path(storage_key), "fake")
@@ -90,7 +96,7 @@ defmodule Mix.Tasks.Videos.EmbedVisualTest do
       end)
 
     embedding = Videos.get_video_embedding!(video.id)
-    assert embedding.vector == [1.0, 0.0]
+    assert Pgvector.to_list(embedding.vector) == pad_vec([1.0, 0.0])
 
     _output =
       capture_io(fn ->
@@ -98,6 +104,10 @@ defmodule Mix.Tasks.Videos.EmbedVisualTest do
       end)
 
     embedding = Videos.get_video_embedding!(video.id)
-    assert embedding.vector == [0.25, 0.75]
+    assert Pgvector.to_list(embedding.vector) == pad_vec([0.25, 0.75])
+  end
+
+  defp pad_vec(values) when is_list(values) do
+    values ++ List.duplicate(0.0, max(@dims - length(values), 0))
   end
 end

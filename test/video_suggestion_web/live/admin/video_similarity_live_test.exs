@@ -10,6 +10,8 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLiveTest do
 
   import VideoSuggestion.AccountsFixtures
 
+  @dims Application.compile_env(:video_suggestion, :embedding_dims, 1536)
+
   test "admin can access video similarity pages", %{conn: conn} do
     admin = user_fixture()
     assert admin.is_admin
@@ -57,9 +59,9 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLiveTest do
         content_hash: :crypto.strong_rand_bytes(32)
       })
 
-    {:ok, _} = Videos.upsert_video_embedding(query.id, "test", [1.0, 0.0])
-    {:ok, _} = Videos.upsert_video_embedding(good.id, "test", [0.9, 0.1])
-    {:ok, _} = Videos.upsert_video_embedding(bad.id, "test", [-1.0, 0.0])
+    {:ok, _} = Videos.upsert_video_embedding(query.id, "test", pad_vec([1.0, 0.0]))
+    {:ok, _} = Videos.upsert_video_embedding(good.id, "test", pad_vec([0.9, 0.1]))
+    {:ok, _} = Videos.upsert_video_embedding(bad.id, "test", pad_vec([-1.0, 0.0]))
 
     {:ok, _view, html} = live(conn, "/admin/similarity/#{query.id}")
     assert html =~ "sim-query"
@@ -85,8 +87,8 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLiveTest do
         content_hash: :crypto.strong_rand_bytes(32)
       })
 
-    {:ok, _} = Videos.upsert_video_embedding(video.id, "test_v1", [1.0, 0.0])
-    Repo.insert!(%Tag{name: "cats", version: "test_v1", vector: [1.0, 0.0]})
+    {:ok, _} = Videos.upsert_video_embedding(video.id, "test_v1", pad_vec([1.0, 0.0]))
+    Repo.insert!(%Tag{name: "cats", version: "test_v1", vector: pad_vec([1.0, 0.0])})
 
     assert {:ok, %{updated_videos: 1}} =
              Tags.refresh_video_tag_suggestions(
@@ -98,5 +100,9 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLiveTest do
     {:ok, _view, html} = live(conn, "/admin/similarity/#{video.id}")
     assert html =~ "Likely tags"
     assert html =~ "cats"
+  end
+
+  defp pad_vec(values) when is_list(values) do
+    values ++ List.duplicate(0.0, max(@dims - length(values), 0))
   end
 end
