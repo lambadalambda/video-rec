@@ -49,16 +49,6 @@ mix videos.transcribe
 mix videos.embed_visual
 ```
 
-## Likely Tags (optional)
-
-Create a text file with one tag per line (e.g. `tags.txt`), then run:
-
-```sh
-mix tags.ingest tags.txt --top-k 10
-```
-
-This stores tag embeddings in Postgres and precomputes per-video tag suggestions.
-
 ### Remote worker (no shared uploads)
 
 If the embedding worker runs on another machine (e.g. via Tailscale) and **does not have access to**
@@ -73,6 +63,42 @@ Example:
 EMBEDDING_WORKER_BASE_URL=http://pc:9001 EMBEDDING_WORKER_MEDIA_MODE=upload mix videos.embed_visual
 EMBEDDING_WORKER_BASE_URL=http://pc:9001 EMBEDDING_WORKER_MEDIA_MODE=upload mix videos.transcribe
 ```
+
+### Docker Compose (GPU worker)
+
+If you run the embedding worker on another machine (e.g. WSL2 + NVIDIA GPU), you can run it via Docker Compose:
+
+```sh
+cd services/embedding_worker
+
+# The compose file uses `gpus: all` (NVIDIA Container Toolkit required).
+
+# first time (required for private repos / packages):
+docker login ghcr.io
+
+# pick the image published by GitHub Actions (edit OWNER):
+export EMBEDDING_WORKER_IMAGE=ghcr.io/OWNER/video-suggestion-embedding-worker:latest
+docker compose up -d
+
+# update later:
+docker compose pull && docker compose up -d
+```
+
+Then point the Phoenix app at it (often via Tailscale) and enable upload-mode:
+
+```sh
+EMBEDDING_WORKER_BASE_URL=http://pc:9001 EMBEDDING_WORKER_MEDIA_MODE=upload mix videos.transcribe
+```
+
+## Likely Tags (optional)
+
+Create a text file with one tag per line (e.g. `tags.txt`), then run:
+
+```sh
+mix tags.ingest tags.txt --top-k 10
+```
+
+This stores tag embeddings in Postgres and precomputes per-video tag suggestions.
 
 ## Recommendation Core
 
