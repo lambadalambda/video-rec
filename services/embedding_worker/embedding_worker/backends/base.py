@@ -14,3 +14,6 @@ class EmbeddingBackend:
         self, *, path: str, caption: str, dims: int, transcribe: Optional[bool] = None
     ) -> EmbeddingResult:
         raise NotImplementedError
+
+    def embed_text(self, *, text: str, dims: int) -> EmbeddingResult:
+        raise NotImplementedError

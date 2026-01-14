@@ -5,6 +5,8 @@ import uuid
 from fastapi import FastAPI, HTTPException
 
 from .api_models import (
+    TextEmbedRequest,
+    TextEmbedResponse,
     VideoEmbedRequest,
     VideoEmbedResponse,
     VideoTranscribeRequest,
@@ -84,6 +86,57 @@ def embed_video(req: VideoEmbedRequest):
     return VideoEmbedResponse(
         version=result.version, dims=dims, embedding=result.embedding, transcript=result.transcript
     )
+
+
+@app.post("/v1/embed/text", response_model=TextEmbedResponse)
+def embed_text(req: TextEmbedRequest):
+    settings = get_settings()
+    req_id = uuid.uuid4().hex[:8]
+    started = time.monotonic()
+
+    try:
+        backend = get_backend(settings)
+    except NotImplementedError:
+        raise HTTPException(status_code=501, detail="backend_not_implemented")
+
+    dims = req.dims or settings.dims
+    logger.info(
+        "embed_text start req_id=%s backend=%s dims=%s text_len=%d",
+        req_id,
+        settings.backend,
+        dims,
+        len(req.text or ""),
+    )
+
+    try:
+        result = backend.embed_text(text=req.text or "", dims=dims)
+    except NotImplementedError as e:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        logger.exception("embed_text not_implemented req_id=%s elapsed_ms=%d", req_id, elapsed_ms)
+        raise HTTPException(status_code=501, detail="backend_not_implemented") from e
+    except (ModuleNotFoundError, ImportError) as e:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        logger.exception("embed_text deps_missing req_id=%s elapsed_ms=%d", req_id, elapsed_ms)
+        raise HTTPException(status_code=501, detail="backend_dependencies_missing") from e
+    except ValueError as e:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        logger.exception("embed_text bad_request req_id=%s elapsed_ms=%d", req_id, elapsed_ms)
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        logger.exception("embed_text failed req_id=%s elapsed_ms=%d", req_id, elapsed_ms)
+        raise
+
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    logger.info(
+        "embed_text done req_id=%s version=%s dims=%s elapsed_ms=%d",
+        req_id,
+        result.version,
+        dims,
+        elapsed_ms,
+    )
+
+    return TextEmbedResponse(version=result.version, dims=dims, embedding=result.embedding)
 
 
 @app.post("/v1/transcribe/video", response_model=VideoTranscribeResponse)

@@ -41,6 +41,30 @@ def test_embed_video_returns_normalized_vector(tmp_path: Path, monkeypatch):
     assert abs(norm - 1.0) < 1.0e-6
 
 
+def test_embed_text_returns_normalized_vector(monkeypatch):
+    monkeypatch.setenv("EMBEDDING_BACKEND", "deterministic")
+    monkeypatch.setenv("EMBEDDING_DIMS", "8")
+    get_settings.cache_clear()
+
+    client = TestClient(app)
+    r = client.post("/v1/embed/text", json={"text": "Cats and dogs"})
+    assert r.status_code == 200
+    payload = r.json()
+
+    assert payload["version"] == "caption_v1"
+    assert payload["dims"] == 8
+    assert len(payload["embedding"]) == 8
+
+    norm = math.sqrt(sum(x * x for x in payload["embedding"]))
+    assert abs(norm - 1.0) < 1.0e-6
+
+
+def test_embed_text_empty_returns_422():
+    client = TestClient(app)
+    r = client.post("/v1/embed/text", json={"text": ""})
+    assert r.status_code == 422
+
+
 def test_unknown_backend_returns_501(tmp_path: Path, monkeypatch):
     uploads = tmp_path / "uploads"
     uploads.mkdir(parents=True, exist_ok=True)

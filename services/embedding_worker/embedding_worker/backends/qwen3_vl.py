@@ -175,6 +175,52 @@ class Qwen3VLBackend(EmbeddingBackend):
         )
         return EmbeddingResult(version=version, embedding=vec, transcript=transcript)
 
+    def embed_text(self, *, text: str, dims: int) -> EmbeddingResult:
+        started = time.monotonic()
+
+        if not text or not text.strip():
+            raise ValueError("text_empty")
+
+        embedder = self._get_embedder()
+
+        rss_mb = _current_rss_mb()
+        logger.info(
+            "qwen3_vl.embed_text start text_len=%d dims=%s rss_mb=%s",
+            len(text),
+            dims,
+            f"{rss_mb:.1f}" if isinstance(rss_mb, (int, float)) else "unknown",
+        )
+
+        embeddings = None
+        try:
+            embed_started = time.monotonic()
+            embeddings = embedder.process([{"text": text.strip()}], normalize=True)
+            embed_ms = int((time.monotonic() - embed_started) * 1000)
+            vec = embeddings[0].detach().to("cpu").tolist()
+        finally:
+            embeddings = None
+            embedder.maybe_cleanup()
+
+        if dims is not None and dims > 0 and dims < len(vec):
+            vec = vec[:dims]
+            vec = _l2_normalize(vec)
+        else:
+            dims = len(vec)
+
+        version = "qwen3_vl_v1"
+
+        total_ms = int((time.monotonic() - started) * 1000)
+        rss_mb_done = _current_rss_mb()
+        logger.info(
+            "qwen3_vl.embed_text done version=%s dims=%d elapsed_ms=%d embed_ms=%d rss_mb=%s",
+            version,
+            dims,
+            total_ms,
+            embed_ms if "embed_ms" in locals() else 0,
+            f"{rss_mb_done:.1f}" if isinstance(rss_mb_done, (int, float)) else "unknown",
+        )
+        return EmbeddingResult(version=version, embedding=vec, transcript=None)
+
     def _get_embedder(self):
         if self._embedder is not None:
             return self._embedder

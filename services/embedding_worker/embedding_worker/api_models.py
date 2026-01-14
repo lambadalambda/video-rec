@@ -23,3 +23,14 @@ class VideoTranscribeRequest(BaseModel):
 
 class VideoTranscribeResponse(BaseModel):
     transcript: str
+
+
+class TextEmbedRequest(BaseModel):
+    text: str = Field(..., min_length=1)
+    dims: Optional[int] = Field(None, gt=0)
+
+
+class TextEmbedResponse(BaseModel):
+    version: str
+    dims: int
+    embedding: List[float]

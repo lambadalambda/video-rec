@@ -20,6 +20,16 @@ class DeterministicBackend(EmbeddingBackend):
             transcript=None,
         )
 
+    def embed_text(self, *, text: str, dims: int) -> EmbeddingResult:
+        if text and text.strip():
+            return EmbeddingResult(
+                version="caption_v1",
+                embedding=caption_embedding(text, dims),
+                transcript=None,
+            )
+
+        raise ValueError("text_empty")
+
 
 def safe_storage_key_to_path(uploads_dir: Path, storage_key: str) -> Path:
     if storage_key is None:
