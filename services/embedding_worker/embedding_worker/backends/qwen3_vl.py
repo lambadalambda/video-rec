@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from concurrent.futures import Future
 from dataclasses import dataclass
 import gc
 import importlib.util
 import logging
 import os
+import queue
 import re
 import shutil
 import subprocess
+import threading
 import time
 from io import BytesIO
 from pathlib import Path
@@ -22,6 +25,8 @@ class Qwen3VLOptions:
     device: Optional[str] = None
     max_length: int = 8192
     quantization: str = "none"
+    batch_max_size: int = 1
+    batch_wait_ms: int = 10
 
 
 logger = logging.getLogger(__name__)
@@ -46,6 +51,8 @@ class Qwen3VLBackend(EmbeddingBackend):
         device: str = "auto",
         max_length: int = 8192,
         quantization: str = "none",
+        batch_max_size: int = 1,
+        batch_wait_ms: int = 10,
         video_fps: float = 1.0,
         video_max_frames: int = 64,
         video_target_frames: int = 10,
@@ -60,8 +67,12 @@ class Qwen3VLBackend(EmbeddingBackend):
             device=device,
             max_length=max_length,
             quantization=_normalize_quantization(quantization),
+            batch_max_size=int(batch_max_size),
+            batch_wait_ms=int(batch_wait_ms),
         )
         self._embedder = None
+        self._embedder_lock = threading.Lock()
+        self._microbatcher = None
 
         self._video_fps = video_fps
         self._video_max_frames = video_max_frames
@@ -163,7 +174,7 @@ class Qwen3VLBackend(EmbeddingBackend):
         embeddings = None
         try:
             embed_started = time.monotonic()
-            embeddings = _process_with_adaptive_max_frames(embedder, base_input)
+            embeddings = self._process_video_batched_or_single(embedder, base_input)
             embed_ms = int((time.monotonic() - embed_started) * 1000)
             vec = embeddings[0].detach().to("cpu").tolist()
         finally:
@@ -306,7 +317,7 @@ class Qwen3VLBackend(EmbeddingBackend):
         embeddings = None
         try:
             embed_started = time.monotonic()
-            embeddings = embedder.process([{"text": text.strip()}], normalize=True)
+            embeddings = self._process_text_batched_or_single(embedder, {"text": text.strip()})
             embed_ms = int((time.monotonic() - embed_started) * 1000)
             vec = embeddings[0].detach().to("cpu").tolist()
         finally:
@@ -337,8 +348,34 @@ class Qwen3VLBackend(EmbeddingBackend):
         if self._embedder is not None:
             return self._embedder
 
-        self._embedder = _Qwen3VLEmbedder(self._opts)
-        return self._embedder
+        with self._embedder_lock:
+            if self._embedder is not None:
+                return self._embedder
+
+            self._embedder = _Qwen3VLEmbedder(self._opts)
+
+            if (
+                self._microbatcher is None
+                and isinstance(self._opts.batch_max_size, int)
+                and self._opts.batch_max_size > 1
+            ):
+                self._microbatcher = _Qwen3VLMicroBatcher(
+                    embedder=self._embedder,
+                    max_batch_size=self._opts.batch_max_size,
+                    max_wait_ms=self._opts.batch_wait_ms,
+                )
+
+            return self._embedder
+
+    def _process_video_batched_or_single(self, embedder, base_input: Dict[str, Any]):
+        if self._microbatcher is None:
+            return _process_with_adaptive_max_frames(embedder, base_input)
+        return self._microbatcher.process_video(base_input)
+
+    def _process_text_batched_or_single(self, embedder, base_input: Dict[str, Any]):
+        if self._microbatcher is None:
+            return embedder.process([base_input], normalize=True)
+        return self._microbatcher.process_text(base_input)
 
     def _get_transcriber(self):
         if self._transcriber is not None:
@@ -569,6 +606,116 @@ def _pool_last(hidden_state, attention_mask):
     col = attention_mask.shape[1] - last_one - 1
     row = torch.arange(hidden_state.shape[0], device=hidden_state.device)
     return hidden_state[row, col]
+
+
+class _Qwen3VLMicroBatcher:
+    def __init__(self, *, embedder: _Qwen3VLEmbedder, max_batch_size: int, max_wait_ms: int):
+        self._embedder = embedder
+        self._max_batch_size = max(1, int(max_batch_size))
+        self._max_wait_s = max(0.0, float(max_wait_ms) / 1000.0)
+
+        self._lock = threading.Lock()
+        self._video_queue: "queue.Queue[tuple[dict[str, Any], Future]]" = queue.Queue()
+        self._text_queue: "queue.Queue[tuple[dict[str, Any], Future]]" = queue.Queue()
+
+        self._video_thread = threading.Thread(
+            target=self._run_video, daemon=True, name="qwen3vl_batch_video"
+        )
+        self._text_thread = threading.Thread(
+            target=self._run_text, daemon=True, name="qwen3vl_batch_text"
+        )
+        self._video_thread.start()
+        self._text_thread.start()
+
+    def process_video(self, base_input: Dict[str, Any]):
+        fut: Future = Future()
+        self._video_queue.put((base_input, fut))
+        return fut.result()
+
+    def process_text(self, base_input: Dict[str, Any]):
+        fut: Future = Future()
+        self._text_queue.put((base_input, fut))
+        return fut.result()
+
+    def _run_video(self):
+        while True:
+            item, fut = self._video_queue.get()
+            batch = [(item, fut)]
+
+            deadline = time.monotonic() + self._max_wait_s
+            while len(batch) < self._max_batch_size:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    next_item = self._video_queue.get(timeout=remaining)
+                except queue.Empty:
+                    break
+                batch.append(next_item)
+
+            inputs = [i for i, _f in batch]
+
+            with self._lock:
+                try:
+                    embeddings = self._embedder.process(inputs, normalize=True)
+                except Exception:
+                    embeddings = None
+
+            if embeddings is not None:
+                for idx, (_input, future) in enumerate(batch):
+                    try:
+                        future.set_result(embeddings[idx : idx + 1])
+                    except Exception as e:
+                        future.set_exception(e)
+                continue
+
+            for base_input, future in batch:
+                try:
+                    with self._lock:
+                        single = _process_with_adaptive_max_frames(self._embedder, base_input)
+                    future.set_result(single)
+                except Exception as e:
+                    future.set_exception(e)
+
+    def _run_text(self):
+        while True:
+            item, fut = self._text_queue.get()
+            batch = [(item, fut)]
+
+            deadline = time.monotonic() + self._max_wait_s
+            while len(batch) < self._max_batch_size:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    next_item = self._text_queue.get(timeout=remaining)
+                except queue.Empty:
+                    break
+                batch.append(next_item)
+
+            inputs = [i for i, _f in batch]
+
+            with self._lock:
+                try:
+                    embeddings = self._embedder.process(inputs, normalize=True)
+                except Exception:
+                    embeddings = None
+
+            if embeddings is not None:
+                for idx, (_input, future) in enumerate(batch):
+                    try:
+                        future.set_result(embeddings[idx : idx + 1])
+                    except Exception as e:
+                        future.set_exception(e)
+                continue
+
+            for base_input, future in batch:
+                try:
+                    with self._lock:
+                        single = self._embedder.process([base_input], normalize=True)
+                    future.set_result(single)
+                except Exception as e:
+                    future.set_exception(e)
 
 
 def _default_device(torch) -> str:

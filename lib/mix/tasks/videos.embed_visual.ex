@@ -6,7 +6,7 @@ defmodule Mix.Tasks.Videos.EmbedVisual do
   @moduledoc """
   Computes embeddings for videos and stores them in Postgres.
 
-      mix videos.embed_visual [--force] [--batch-size N] [--limit N] [--dims N]
+      mix videos.embed_visual [--force] [--batch-size N] [--limit N] [--dims N] [--concurrency N]
 
   Notes:
 
@@ -21,7 +21,8 @@ defmodule Mix.Tasks.Videos.EmbedVisual do
     force: :boolean,
     batch_size: :integer,
     limit: :integer,
-    dims: :integer
+    dims: :integer,
+    concurrency: :integer
   ]
 
   alias VideoSuggestion.EmbeddingWorkerClient
@@ -46,19 +47,33 @@ defmodule Mix.Tasks.Videos.EmbedVisual do
     batch_size = Keyword.get(opts, :batch_size, 50)
     limit = Keyword.get(opts, :limit)
     dims = Keyword.get(opts, :dims)
+    concurrency = Keyword.get(opts, :concurrency, 4)
+    req_opts = Process.get({:video_suggestion, :embedding_worker_req_options}) || []
 
     Uploads.ensure_dir!()
 
-    {updated, skipped, failures} = embed_all(force, batch_size, limit, dims)
+    {updated, skipped, failures} =
+      embed_all(force, batch_size, limit, dims, concurrency, req_opts)
 
     Mix.shell().info("Done. Updated: #{updated}, skipped: #{skipped}, failures: #{failures}.")
   end
 
-  defp embed_all(force, batch_size, limit, dims) do
-    do_embed_all(force, batch_size, limit, dims, 0, 0, 0, 0)
+  defp embed_all(force, batch_size, limit, dims, concurrency, req_opts) do
+    do_embed_all(force, batch_size, limit, dims, concurrency, req_opts, 0, 0, 0, 0)
   end
 
-  defp do_embed_all(force, batch_size, limit, dims, after_id, updated, skipped, failures) do
+  defp do_embed_all(
+         force,
+         batch_size,
+         limit,
+         dims,
+         concurrency,
+         req_opts,
+         after_id,
+         updated,
+         skipped,
+         failures
+       ) do
     cond do
       is_integer(limit) and updated >= limit ->
         {updated, skipped, failures}
@@ -71,58 +86,82 @@ defmodule Mix.Tasks.Videos.EmbedVisual do
             {updated, skipped, failures}
 
           _ ->
+            max_concurrency =
+              if is_integer(concurrency) and concurrency > 0, do: concurrency, else: 1
+
             {updated, skipped, failures} =
-              Enum.reduce(rows, {updated, skipped, failures}, fn {video, embedding},
-                                                                 {updated, skipped, failures} ->
-                cond do
-                  is_integer(limit) and updated >= limit ->
-                    {updated, skipped, failures}
+              rows
+              |> Task.async_stream(
+                fn {video, embedding} ->
+                  cond do
+                    not File.exists?(Uploads.path(video.storage_key)) ->
+                      :failed
 
-                  not File.exists?(Uploads.path(video.storage_key)) ->
-                    {updated, skipped, failures + 1}
+                    not force and skip_embedding?(embedding) ->
+                      :skipped
 
-                  not force and skip_embedding?(embedding) ->
-                    {updated, skipped + 1, failures}
+                    true ->
+                      attrs =
+                        %{caption: video.caption || "", transcribe: false}
+                        |> maybe_put_dims(dims)
 
-                  true ->
-                    attrs =
-                      %{
-                        caption: video.caption || "",
-                        transcribe: false
-                      }
-                      |> maybe_put_dims(dims)
+                      embed_response =
+                        case System.get_env("EMBEDDING_WORKER_MEDIA_MODE") do
+                          "upload" ->
+                            path = Uploads.path(video.storage_key)
 
-                    embed_response =
-                      case System.get_env("EMBEDDING_WORKER_MEDIA_MODE") do
-                        "upload" ->
-                          path = Uploads.path(video.storage_key)
+                            with {:ok, frames} <- Media.extract_video_frames(path) do
+                              EmbeddingWorkerClient.embed_video_frames(frames, attrs, req_opts)
+                            end
 
-                          with {:ok, frames} <- Media.extract_video_frames(path) do
-                            EmbeddingWorkerClient.embed_video_frames(frames, attrs)
+                          _ ->
+                            EmbeddingWorkerClient.embed_video(video.storage_key, attrs, req_opts)
+                        end
+
+                      case embed_response do
+                        {:ok, %{"version" => version, "embedding" => vector}} ->
+                          case Videos.upsert_video_embedding(video.id, version, vector) do
+                            {:ok, _} -> :updated
+                            {:error, _} -> :failed
                           end
 
                         _ ->
-                          EmbeddingWorkerClient.embed_video(video.storage_key, attrs)
+                          :failed
                       end
+                  end
+                end,
+                max_concurrency: max_concurrency,
+                ordered: false,
+                timeout: :infinity
+              )
+              |> Enum.reduce({updated, skipped, failures}, fn
+                {:ok, :updated}, {updated, skipped, failures} ->
+                  {updated + 1, skipped, failures}
 
-                    case embed_response do
-                      {:ok, %{"version" => version, "embedding" => vector}} ->
-                        case Videos.upsert_video_embedding(video.id, version, vector) do
-                          {:ok, _} -> {updated + 1, skipped, failures}
-                          {:error, _} -> {updated, skipped, failures + 1}
-                        end
+                {:ok, :skipped}, {updated, skipped, failures} ->
+                  {updated, skipped + 1, failures}
 
-                      {:ok, _unexpected} ->
-                        {updated, skipped, failures + 1}
+                {:ok, :failed}, {updated, skipped, failures} ->
+                  {updated, skipped, failures + 1}
 
-                      {:error, _reason} ->
-                        {updated, skipped, failures + 1}
-                    end
-                end
+                {:exit, _reason}, {updated, skipped, failures} ->
+                  {updated, skipped, failures + 1}
               end)
 
             last_id = rows |> List.last() |> elem(0) |> Map.fetch!(:id)
-            do_embed_all(force, batch_size, limit, dims, last_id, updated, skipped, failures)
+
+            do_embed_all(
+              force,
+              batch_size,
+              limit,
+              dims,
+              concurrency,
+              req_opts,
+              last_id,
+              updated,
+              skipped,
+              failures
+            )
         end
     end
   end

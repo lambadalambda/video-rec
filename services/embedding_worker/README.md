@@ -31,6 +31,16 @@ pip install -r requirements-qwen-cuda.txt
 QWEN_QUANTIZATION=int4  # or: int8
 ```
 
+### Qwen3-VL microbatching (better GPU utilization)
+
+If the worker receives many concurrent embed requests (e.g. from `mix videos.embed_visual`), it can combine them
+into a single forward pass to keep the GPU busier:
+
+```sh
+QWEN_BATCH_MAX_SIZE=8
+QWEN_BATCH_WAIT_MS=20
+```
+
 ## Enable Whisper transcription
 
 ```sh

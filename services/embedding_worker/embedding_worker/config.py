@@ -28,6 +28,8 @@ class Settings:
     qwen_device: str
     qwen_max_length: int
     qwen_quantization: str
+    qwen_batch_max_size: int
+    qwen_batch_wait_ms: int
     qwen_video_fps: float
     qwen_video_max_frames: int
     qwen_video_target_frames: int
@@ -47,6 +49,8 @@ def get_settings() -> Settings:
     qwen_device = os.environ.get("QWEN_DEVICE", "auto")
     qwen_max_length = int(os.environ.get("QWEN_MAX_LENGTH", "8192"))
     qwen_quantization = (os.environ.get("QWEN_QUANTIZATION") or "none").strip().lower()
+    qwen_batch_max_size = int(os.environ.get("QWEN_BATCH_MAX_SIZE", "1"))
+    qwen_batch_wait_ms = int(os.environ.get("QWEN_BATCH_WAIT_MS", "10"))
     qwen_video_fps = float(os.environ.get("QWEN_VIDEO_FPS", "1.0"))
     qwen_video_max_frames = int(os.environ.get("QWEN_VIDEO_MAX_FRAMES", "64"))
     qwen_video_target_frames = int(os.environ.get("QWEN_VIDEO_TARGET_FRAMES", "10"))
@@ -65,6 +69,8 @@ def get_settings() -> Settings:
         qwen_device=qwen_device,
         qwen_max_length=qwen_max_length,
         qwen_quantization=qwen_quantization,
+        qwen_batch_max_size=qwen_batch_max_size,
+        qwen_batch_wait_ms=qwen_batch_wait_ms,
         qwen_video_fps=qwen_video_fps,
         qwen_video_max_frames=qwen_video_max_frames,
         qwen_video_target_frames=qwen_video_target_frames,
