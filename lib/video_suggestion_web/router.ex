@@ -33,6 +33,7 @@ defmodule VideoSuggestionWeb.Router do
       live "/recommendations", Admin.RecommendationsLive, :index
       live "/similarity", Admin.VideoSimilarityLive, :index
       live "/similarity/:id", Admin.VideoSimilarityLive, :show
+      live "/search", Admin.VideoSearchLive, :index
     end
   end
 

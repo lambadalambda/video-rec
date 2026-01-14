@@ -68,6 +68,12 @@ defmodule VideoSuggestionWeb.Layouts do
                   Similarity
                 </.link>
               </li>
+
+              <li>
+                <.link navigate={~p"/admin/search"} class="btn btn-ghost btn-sm">
+                  Search
+                </.link>
+              </li>
             <% end %>
 
             <li class="hidden sm:block text-xs opacity-70">
