@@ -41,6 +41,7 @@ defmodule VideoSuggestion.MixProject do
   defp deps do
     [
       {:tidewave, "~> 0.5", only: [:dev]},
+      {:pgvector, "~> 0.3.1"},
       {:bcrypt_elixir, "~> 3.0"},
       {:phoenix, "~> 1.8.3"},
       {:phoenix_ecto, "~> 4.5"},

@@ -24,6 +24,14 @@ config :video_suggestion,
   ecto_repos: [VideoSuggestion.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# Default embedding dimension used across the app (Postgres pgvector column size, fallback
+# deterministic embeddings, and embedding-worker requests).
+config :video_suggestion, :embedding_dims, 1536
+
+# Enable pgvector (vector type decoding/encoding).
+config :video_suggestion, VideoSuggestion.Repo,
+  types: VideoSuggestion.PostgrexTypes
+
 # Configure the endpoint
 config :video_suggestion, VideoSuggestionWeb.Endpoint,
   url: [host: "localhost"],
