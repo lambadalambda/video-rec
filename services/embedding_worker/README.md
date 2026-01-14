@@ -147,6 +147,14 @@ cd services/embedding_worker
 EMBEDDING_WORKER_IMAGE=ghcr.io/OWNER/video-suggestion-embedding-worker:latest docker compose up -d
 ```
 
+If you prefer a file, copy `.env.example` to `.env` and run compose (Docker will auto-load `.env` in this folder):
+
+```sh
+cd services/embedding_worker
+cp .env.example .env
+docker compose up -d
+```
+
 Example: run the 8B model quantized:
 
 ```sh

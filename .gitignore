@@ -47,3 +47,8 @@ npm-debug.log
 
 # macOS
 .DS_Store
+
+# dotenv (keep examples in repo)
+.env
+.env.*
+!.env.example
