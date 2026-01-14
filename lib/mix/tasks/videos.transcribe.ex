@@ -23,6 +23,7 @@ defmodule Mix.Tasks.Videos.Transcribe do
   ]
 
   alias VideoSuggestion.EmbeddingWorkerClient
+  alias VideoSuggestion.Media
   alias VideoSuggestion.Uploads
   alias VideoSuggestion.Videos
   alias VideoSuggestion.Videos.Video
@@ -77,7 +78,24 @@ defmodule Mix.Tasks.Videos.Transcribe do
                     {updated, skipped, failures + 1}
 
                   true ->
-                    case EmbeddingWorkerClient.transcribe_video(video.storage_key) do
+                    response =
+                      case System.get_env("EMBEDDING_WORKER_MEDIA_MODE") do
+                        "upload" ->
+                          path = Uploads.path(video.storage_key)
+
+                          with {:ok, audio_path} <- Media.extract_audio_to_wav(path) do
+                            try do
+                              EmbeddingWorkerClient.transcribe_audio_file(audio_path)
+                            after
+                              File.rm_rf(audio_path)
+                            end
+                          end
+
+                        _ ->
+                          EmbeddingWorkerClient.transcribe_video(video.storage_key)
+                      end
+
+                    case response do
                       {:ok, %{"transcript" => transcript}} ->
                         transcript = (transcript || "") |> String.trim()
 

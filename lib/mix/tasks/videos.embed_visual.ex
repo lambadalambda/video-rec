@@ -25,6 +25,7 @@ defmodule Mix.Tasks.Videos.EmbedVisual do
   ]
 
   alias VideoSuggestion.EmbeddingWorkerClient
+  alias VideoSuggestion.Media
   alias VideoSuggestion.Repo
   alias VideoSuggestion.Uploads
   alias VideoSuggestion.Videos
@@ -91,7 +92,20 @@ defmodule Mix.Tasks.Videos.EmbedVisual do
                       }
                       |> maybe_put_dims(dims)
 
-                    case EmbeddingWorkerClient.embed_video(video.storage_key, attrs) do
+                    embed_response =
+                      case System.get_env("EMBEDDING_WORKER_MEDIA_MODE") do
+                        "upload" ->
+                          path = Uploads.path(video.storage_key)
+
+                          with {:ok, frames} <- Media.extract_video_frames(path) do
+                            EmbeddingWorkerClient.embed_video_frames(frames, attrs)
+                          end
+
+                        _ ->
+                          EmbeddingWorkerClient.embed_video(video.storage_key, attrs)
+                      end
+
+                    case embed_response do
                       {:ok, %{"version" => version, "embedding" => vector}} ->
                         case Videos.upsert_video_embedding(video.id, version, vector) do
                           {:ok, _} -> {updated + 1, skipped, failures}
