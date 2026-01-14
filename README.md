@@ -49,6 +49,16 @@ mix videos.transcribe
 mix videos.embed_visual
 ```
 
+## Likely Tags (optional)
+
+Create a text file with one tag per line (e.g. `tags.txt`), then run:
+
+```sh
+mix tags.ingest tags.txt --top-k 10
+```
+
+This stores tag embeddings in Postgres and precomputes per-video tag suggestions.
+
 ### Remote worker (no shared uploads)
 
 If the embedding worker runs on another machine (e.g. via Tailscale) and **does not have access to**
