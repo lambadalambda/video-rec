@@ -4,6 +4,9 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLiveTest do
   import Phoenix.LiveViewTest
 
   alias VideoSuggestion.Videos
+  alias VideoSuggestion.Repo
+  alias VideoSuggestion.Tags
+  alias VideoSuggestion.Tags.Tag
 
   import VideoSuggestion.AccountsFixtures
 
@@ -66,5 +69,34 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLiveTest do
     {good_pos, _} = :binary.match(html, "sim-good")
     {bad_pos, _} = :binary.match(html, "sim-bad")
     assert good_pos < bad_pos
+  end
+
+  test "page shows likely tags for a video when available", %{conn: conn} do
+    admin = user_fixture()
+    assert admin.is_admin
+
+    conn = log_in_user(conn, admin)
+
+    {:ok, video} =
+      Videos.create_video(%{
+        user_id: admin.id,
+        caption: "tagged-video",
+        storage_key: "#{System.unique_integer([:positive])}.mp4",
+        content_hash: :crypto.strong_rand_bytes(32)
+      })
+
+    {:ok, _} = Videos.upsert_video_embedding(video.id, "test_v1", [1.0, 0.0])
+    Repo.insert!(%Tag{name: "cats", version: "test_v1", vector: [1.0, 0.0]})
+
+    assert {:ok, %{updated_videos: 1}} =
+             Tags.refresh_video_tag_suggestions(
+               top_k: 1,
+               video_version_prefix: "test",
+               tag_version_prefix: "test"
+             )
+
+    {:ok, _view, html} = live(conn, "/admin/similarity/#{video.id}")
+    assert html =~ "Likely tags"
+    assert html =~ "cats"
   end
 end

@@ -70,6 +70,12 @@ defmodule VideoSuggestionWeb.Layouts do
               </li>
 
               <li>
+                <.link navigate={~p"/admin/tags"} class="btn btn-ghost btn-sm">
+                  Tags
+                </.link>
+              </li>
+
+              <li>
                 <.link navigate={~p"/admin/search"} class="btn btn-ghost btn-sm">
                   Search
                 </.link>

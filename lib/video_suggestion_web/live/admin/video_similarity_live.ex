@@ -4,6 +4,7 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLive do
   import Ecto.Query, warn: false
 
   alias VideoSuggestion.Repo
+  alias VideoSuggestion.Tags
   alias VideoSuggestion.Uploads
   alias VideoSuggestion.Videos
   alias VideoSuggestion.Videos.Video
@@ -18,6 +19,8 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLive do
      |> assign(:video, nil)
      |> assign(:embedding_version, nil)
      |> assign(:items, [])
+     |> assign(:tags, [])
+     |> assign(:tags_message, nil)
      |> assign(:message, nil)}
   end
 
@@ -33,6 +36,8 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLive do
          |> assign(:video, nil)
          |> assign(:embedding_version, nil)
          |> assign(:items, [])
+         |> assign(:tags, [])
+         |> assign(:tags_message, nil)
          |> assign(:message, nil)}
 
       :show ->
@@ -44,12 +49,15 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLive do
               {:noreply, push_navigate(socket, to: ~p"/admin/similarity")}
             else
               {items, embedding_version, message} = load_similar(video.id)
+              {tags, tags_message} = load_tags(video.id)
 
               {:noreply,
                socket
                |> assign(:video, video)
                |> assign(:embedding_version, embedding_version)
                |> assign(:items, items)
+               |> assign(:tags, tags)
+               |> assign(:tags_message, tags_message)
                |> assign(:message, message)}
             end
 
@@ -113,6 +121,24 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLive do
                 controls
               >
               </video>
+            </div>
+
+            <div class="rounded-box border border-base-300 bg-base-100 p-4 space-y-2">
+              <div class="font-semibold">Likely tags</div>
+
+              <%= if @tags == [] do %>
+                <p class="text-sm opacity-70">{@tags_message || "No tag suggestions yet."}</p>
+              <% else %>
+                <div class="flex flex-wrap gap-2">
+                  <.link
+                    :for={tag <- @tags}
+                    navigate={~p"/admin/tags/#{tag.id}"}
+                    class="badge badge-outline"
+                  >
+                    {tag.tag} · {format_score(tag.score)}
+                  </.link>
+                </div>
+              <% end %>
             </div>
 
             <%= if @items == [] do %>
@@ -185,6 +211,19 @@ defmodule VideoSuggestionWeb.Admin.VideoSimilarityLive do
 
       {:error, :empty_vector} ->
         {[], nil, "This video's embedding vector is empty."}
+    end
+  end
+
+  defp load_tags(video_id) do
+    case Tags.likely_tags(video_id, limit: 20) do
+      {:ok, tags} when tags != [] ->
+        {tags, nil}
+
+      {:ok, []} ->
+        {[], "No tag suggestions yet. Run mix tags.ingest."}
+
+      {:error, :embedding_missing} ->
+        {[], "No embedding yet; can't score tags. Run mix videos.embed_visual."}
     end
   end
 
