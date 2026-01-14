@@ -8,6 +8,7 @@ defmodule VideoSuggestion.Tags do
   alias VideoSuggestion.Reco.Tagging
   alias VideoSuggestion.Tags.Tag
   alias VideoSuggestion.Tags.VideoTagSuggestion
+  alias VideoSuggestion.Videos.Video
   alias VideoSuggestion.Videos.VideoEmbedding
 
   def ingest_tags(tag_names, opts \\ []) when is_list(tag_names) do
@@ -85,12 +86,50 @@ defmodule VideoSuggestion.Tags do
             where: s.video_id == ^video_id and s.video_embedding_version == ^video_version,
             order_by: [desc: s.score, asc: t.name],
             limit: ^limit,
-            select: %{tag: t.name, score: s.score}
+            select: %{id: t.id, tag: t.name, score: s.score}
           )
           |> Repo.all()
 
         {:ok, items}
     end
+  end
+
+  def list_tags_by_frequency(opts \\ []) do
+    limit = Keyword.get(opts, :limit, 200)
+
+    from(s in VideoTagSuggestion,
+      join: t in Tag,
+      on: t.id == s.tag_id,
+      join: e in VideoEmbedding,
+      on: e.video_id == s.video_id,
+      where: s.video_embedding_version == e.version,
+      where: s.tag_embedding_version == t.version,
+      group_by: [t.id, t.name],
+      order_by: [desc: count(s.video_id, :distinct), asc: t.name],
+      limit: ^limit,
+      select: %{id: t.id, tag: t.name, count: count(s.video_id, :distinct)}
+    )
+    |> Repo.all()
+  end
+
+  def list_videos_for_tag(tag_id, opts \\ []) when is_integer(tag_id) do
+    limit = Keyword.get(opts, :limit, 100)
+
+    from(s in VideoTagSuggestion,
+      join: v in Video,
+      on: v.id == s.video_id,
+      join: e in VideoEmbedding,
+      on: e.video_id == v.id,
+      join: t in Tag,
+      on: t.id == s.tag_id,
+      where: s.tag_id == ^tag_id,
+      where: s.video_embedding_version == e.version,
+      where: s.tag_embedding_version == t.version,
+      order_by: [desc: s.score, desc: v.inserted_at, desc: v.id],
+      limit: ^limit,
+      select: %{video: v, score: s.score}
+    )
+    |> Repo.all()
   end
 
   defp do_refresh_video_tag_suggestions(
