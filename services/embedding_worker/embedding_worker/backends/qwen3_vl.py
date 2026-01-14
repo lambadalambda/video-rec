@@ -451,6 +451,34 @@ def _process_with_adaptive_max_frames(embedder, base_input: Dict[str, Any]):
     for _attempt in range(6):
         try:
             return embedder.process(inputs, normalize=True)
+        except RuntimeError as e:
+            if not _is_video_frame_stack_size_mismatch(e):
+                raise
+
+            current_input = inputs[0] if inputs else base_input
+            video = current_input.get("video")
+
+            normalized = None
+            if isinstance(video, (list, tuple)):
+                normalized = _normalize_video_frames_to_common_size(video)
+
+            if normalized is None and isinstance(video, (str, Path)):
+                extracted = _extract_video_frames_ffmpeg(
+                    video_path=str(video),
+                    fps=float(current_input.get("fps") or 1.0),
+                    max_frames=int(current_input.get("max_frames") or 1),
+                )
+
+                if extracted:
+                    normalized = _normalize_video_frames_to_common_size(extracted)
+
+            if normalized:
+                logger.warning("qwen3_vl frame_size_mismatch retrying_with_normalized_frames")
+                inputs = [{**current_input, "video": normalized}]
+                embedder.maybe_cleanup()
+                continue
+
+            raise
         except ValueError as e:
             if not _is_mm_video_token_mismatch(e) or not isinstance(max_frames, int) or max_frames <= 1:
                 raise
@@ -487,6 +515,11 @@ def _process_with_adaptive_max_frames(embedder, base_input: Dict[str, Any]):
 def _is_mm_video_token_mismatch(error: Exception) -> bool:
     msg = str(error)
     return "Mismatch in `video` token count between text and `input_ids`" in msg
+
+
+def _is_video_frame_stack_size_mismatch(error: Exception) -> bool:
+    msg = str(error)
+    return "stack expects each tensor to be equal size" in msg
 
 
 def _reduce_max_frames_from_error(current_max_frames: int, msg: str) -> int:
@@ -706,7 +739,7 @@ def _extract_video_frames_ffmpeg(
     if not frames:
         return None
 
-    return frames
+    return _normalize_video_frames_to_common_size(frames) or frames
 
 
 def _find_ffmpeg() -> Optional[str]:
@@ -737,6 +770,67 @@ def _downsample_frames(frames: Any, target_frames: int) -> List[Any]:
     last = len(items) - 1
     indices = [int(i * last / (target_frames - 1)) for i in range(target_frames)]
     return [items[i] for i in indices]
+
+
+def _normalize_video_frames_to_common_size(frames: Any) -> Optional[List[Any]]:
+    items = list(frames)
+    if not items:
+        return None
+
+    sizes = []
+    for item in items:
+        size = getattr(item, "size", None)
+        if not (isinstance(size, (tuple, list)) and len(size) == 2):
+            return None
+        sizes.append((int(size[0]), int(size[1])))
+
+    if all(size == sizes[0] for size in sizes):
+        return items
+
+    try:
+        from PIL import Image, ImageOps
+    except ModuleNotFoundError:
+        return None
+
+    counts: Dict[tuple[int, int], int] = {}
+    for size in sizes:
+        counts[size] = counts.get(size, 0) + 1
+
+    def key(size: tuple[int, int]) -> tuple[int, int]:
+        return (counts.get(size, 0), size[0] * size[1])
+
+    target_size = max(counts.keys(), key=key)
+
+    normalized: List[Any] = []
+    for item in items:
+        img = item
+
+        if getattr(img, "mode", None) != "RGB":
+            try:
+                img = img.convert("RGB")
+            except Exception:
+                pass
+
+        if getattr(img, "size", None) != target_size:
+            try:
+                resample = getattr(Image, "Resampling", Image).BILINEAR
+                img = ImageOps.pad(img, target_size, method=resample, color=(0, 0, 0))
+            except Exception:
+                try:
+                    img = img.resize(target_size)
+                except Exception:
+                    continue
+
+        normalized.append(img)
+
+    if normalized:
+        logger.warning(
+            "qwen3_vl normalized_frames sizes=%s target_size=%s",
+            sorted(set(sizes)),
+            target_size,
+        )
+
+    return normalized or None
 
 
 def _file_size_mb(path: str) -> float:

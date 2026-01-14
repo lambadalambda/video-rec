@@ -105,3 +105,18 @@ def test_format_conversation_preserves_video_frames_list():
     video_items = [item for item in user["content"] if item.get("type") == "video"]
     assert len(video_items) == 1
     assert video_items[0]["video"] is frames
+
+
+def test_normalize_video_frames_to_common_size_resizes_mismatched_frames():
+    try:
+        from PIL import Image
+    except ModuleNotFoundError:
+        return
+
+    big = Image.new("RGB", (1408, 1088), color=(10, 10, 10))
+    small = Image.new("RGB", (320, 256), color=(20, 20, 20))
+
+    normalized = qwen3_vl._normalize_video_frames_to_common_size([big, small, big])
+    assert normalized is not None
+    assert len(normalized) == 3
+    assert all(getattr(img, "size", None) == normalized[0].size for img in normalized)
