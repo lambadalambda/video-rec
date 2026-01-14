@@ -21,6 +21,7 @@ def get_backend(settings: Settings) -> EmbeddingBackend:
             f"{settings.qwen_model}:"
             f"{settings.qwen_device}:"
             f"{settings.qwen_max_length}:"
+            f"{settings.qwen_quantization}:"
             f"{settings.qwen_video_fps}:"
             f"{settings.qwen_video_max_frames}:"
             f"{settings.qwen_video_target_frames}:"
@@ -37,6 +38,7 @@ def get_backend(settings: Settings) -> EmbeddingBackend:
                 model_name_or_path=settings.qwen_model,
                 device=settings.qwen_device,
                 max_length=settings.qwen_max_length,
+                quantization=settings.qwen_quantization,
                 video_fps=settings.qwen_video_fps,
                 video_max_frames=settings.qwen_video_max_frames,
                 video_target_frames=settings.qwen_video_target_frames,

@@ -19,6 +19,18 @@ pip install -r requirements.txt -r requirements-dev.txt
 pip install -r requirements-qwen.txt
 ```
 
+### Qwen3-VL quantization (CUDA only)
+
+To run larger Qwen3-VL models (e.g. 8B) in less VRAM/RAM, the worker supports weight quantization via bitsandbytes:
+
+```sh
+# CUDA-only deps:
+pip install -r requirements-qwen-cuda.txt
+
+# at runtime:
+QWEN_QUANTIZATION=int4  # or: int8
+```
+
 ## Enable Whisper transcription
 
 ```sh
@@ -123,4 +135,13 @@ Or run via `compose.yaml` (edit `EMBEDDING_WORKER_IMAGE` / env vars as needed):
 ```sh
 cd services/embedding_worker
 EMBEDDING_WORKER_IMAGE=ghcr.io/OWNER/video-suggestion-embedding-worker:latest docker compose up -d
+```
+
+Example: run the 8B model quantized:
+
+```sh
+cd services/embedding_worker
+export QWEN3_VL_MODEL=Qwen/Qwen3-VL-Embedding-8B
+export QWEN_QUANTIZATION=int4
+docker compose up -d
 ```

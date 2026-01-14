@@ -158,3 +158,12 @@ def test_process_with_adaptive_max_frames_falls_back_to_ffmpeg_when_video_fps_mi
     assert len(embedder.calls) == 2
     assert embedder.calls[1][0]["video"] == extracted_frames
     assert embedder.cleanup_calls == 1
+
+
+def test_normalize_quantization_accepts_common_aliases():
+    assert qwen3_vl._normalize_quantization("none") == "none"
+    assert qwen3_vl._normalize_quantization("") == "none"
+    assert qwen3_vl._normalize_quantization("int8") == "int8"
+    assert qwen3_vl._normalize_quantization("8bit") == "int8"
+    assert qwen3_vl._normalize_quantization("int4") == "int4"
+    assert qwen3_vl._normalize_quantization("4bit") == "int4"

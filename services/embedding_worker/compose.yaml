@@ -6,7 +6,8 @@ services:
     environment:
       UPLOADS_DIR: /unused
       EMBEDDING_BACKEND: qwen3_vl
-      QWEN3_VL_MODEL: Qwen/Qwen3-VL-Embedding-2B
+      QWEN3_VL_MODEL: ${QWEN3_VL_MODEL:-Qwen/Qwen3-VL-Embedding-2B}
+      QWEN_QUANTIZATION: ${QWEN_QUANTIZATION:-none}
       EMBEDDING_DIMS: "512"
       TRANSCRIBE_ENABLED: "1"
       WHISPER_BACKEND: transformers
@@ -21,4 +22,3 @@ services:
 volumes:
   hf_cache:
   torch_cache:
-

@@ -13,11 +13,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements*.txt ./
-RUN python -m pip install --no-cache-dir -r requirements.txt -r requirements-qwen.txt -r requirements-whisper.txt
+RUN python -m pip install --no-cache-dir -r requirements.txt -r requirements-qwen.txt -r requirements-qwen-cuda.txt -r requirements-whisper.txt
 
 COPY embedding_worker ./embedding_worker
 
 EXPOSE 9001
 
 CMD ["python", "-m", "uvicorn", "embedding_worker.main:app", "--host", "0.0.0.0", "--port", "9001"]
-

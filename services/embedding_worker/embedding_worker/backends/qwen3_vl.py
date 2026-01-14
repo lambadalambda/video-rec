@@ -21,9 +21,21 @@ class Qwen3VLOptions:
     model_name_or_path: str
     device: Optional[str] = None
     max_length: int = 8192
+    quantization: str = "none"
 
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_quantization(raw: Optional[str]) -> str:
+    value = (raw or "").strip().lower()
+    if value in ("", "none", "no", "false", "0", "off"):
+        return "none"
+    if value in ("int8", "8bit", "8-bit", "bnb8", "bnb_8bit", "load_in_8bit"):
+        return "int8"
+    if value in ("int4", "4bit", "4-bit", "bnb4", "bnb_4bit", "load_in_4bit"):
+        return "int4"
+    return value
 
 
 class Qwen3VLBackend(EmbeddingBackend):
@@ -33,6 +45,7 @@ class Qwen3VLBackend(EmbeddingBackend):
         model_name_or_path: str,
         device: str = "auto",
         max_length: int = 8192,
+        quantization: str = "none",
         video_fps: float = 1.0,
         video_max_frames: int = 64,
         video_target_frames: int = 10,
@@ -43,7 +56,10 @@ class Qwen3VLBackend(EmbeddingBackend):
         whisper_language: Optional[str] = None,
     ):
         self._opts = Qwen3VLOptions(
-            model_name_or_path=model_name_or_path, device=device, max_length=max_length
+            model_name_or_path=model_name_or_path,
+            device=device,
+            max_length=max_length,
+            quantization=_normalize_quantization(quantization),
         )
         self._embedder = None
 
@@ -359,6 +375,14 @@ class _Qwen3VLEmbedder:
         self._torch = torch
         self._max_length = opts.max_length
 
+        device = opts.device
+        if not device or device == "auto":
+            device = _default_device(torch)
+
+        self._device = device
+
+        torch_dtype = _default_torch_dtype(torch, device)
+
         config = AutoConfig.from_pretrained(opts.model_name_or_path, trust_remote_code=True)
         self._processor = Qwen3VLProcessor.from_pretrained(opts.model_name_or_path, trust_remote_code=True)
 
@@ -376,19 +400,47 @@ class _Qwen3VLEmbedder:
                 )
                 return {"last_hidden_state": outputs.last_hidden_state, "attention_mask": attention_mask}
 
-        self._model = (
-            Qwen3VLForEmbedding.from_pretrained(
-                opts.model_name_or_path, config=config, trust_remote_code=True
-            )
-            .eval()
-        )
+        quantization = _normalize_quantization(getattr(opts, "quantization", None))
 
-        device = opts.device
-        if not device or device == "auto":
-            device = _default_device(torch)
+        load_kwargs: Dict[str, Any] = {
+            "config": config,
+            "trust_remote_code": True,
+            "low_cpu_mem_usage": True,
+        }
 
-        self._device = device
-        self._model.to(device)
+        if device != "cpu":
+            load_kwargs["torch_dtype"] = torch_dtype
+
+        if quantization != "none":
+            if not str(device).startswith("cuda"):
+                raise ValueError("qwen3_vl quantization requires cuda")
+
+            try:
+                import bitsandbytes  # noqa: F401
+            except ModuleNotFoundError as e:
+                raise ModuleNotFoundError("bitsandbytes") from e
+
+            from transformers import BitsAndBytesConfig
+
+            if quantization == "int8":
+                load_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
+            elif quantization == "int4":
+                load_kwargs["quantization_config"] = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch_dtype,
+                )
+            else:
+                raise ValueError(f"Unknown quantization mode: {quantization}")
+
+            # Required for quantized weights.
+            load_kwargs["device_map"] = "auto"
+
+        self._model = Qwen3VLForEmbedding.from_pretrained(opts.model_name_or_path, **load_kwargs).eval()
+
+        if quantization == "none":
+            self._model.to(device)
 
     def maybe_cleanup(self):
         if not _should_torch_cleanup(self._device):
@@ -525,6 +577,18 @@ def _default_device(torch) -> str:
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return "mps"
     return "cpu"
+
+
+def _default_torch_dtype(torch, device: str):
+    # Default to bf16 on CUDA where supported (4090 etc.), otherwise fp16.
+    if str(device).startswith("cuda"):
+        is_bf16_supported = getattr(getattr(torch, "cuda", None), "is_bf16_supported", None)
+        if callable(is_bf16_supported) and is_bf16_supported():
+            return torch.bfloat16
+        return torch.float16
+
+    # On MPS, stick to fp32 for quality/stability.
+    return torch.float32
 
 
 def _should_torch_cleanup(device: str) -> bool:

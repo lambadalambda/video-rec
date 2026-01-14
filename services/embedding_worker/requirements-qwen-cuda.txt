@@ -1,0 +1,5 @@
+# Optional CUDA-only deps for Qwen3-VL quantization.
+# Keep these separate so local (macOS/MPS) installs can use requirements-qwen.txt without bitsandbytes.
+accelerate>=0.33.0
+bitsandbytes>=0.45.0
+
