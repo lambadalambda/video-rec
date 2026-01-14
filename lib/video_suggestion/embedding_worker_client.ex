@@ -30,6 +30,17 @@ defmodule VideoSuggestion.EmbeddingWorkerClient do
     )
   end
 
+  def embed_text(text, attrs \\ %{}, opts \\ []) when is_binary(text) and is_map(attrs) do
+    attrs = Map.merge(%{text: text}, attrs)
+
+    request(
+      :post,
+      "/v1/embed/text",
+      attrs,
+      opts
+    )
+  end
+
   defp request(method, path, json, opts) when is_atom(method) and is_binary(path) do
     {base_url, req_opts} = req_config(opts)
 

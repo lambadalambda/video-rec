@@ -273,6 +273,52 @@ defmodule VideoSuggestion.VideosTest do
     end
   end
 
+  describe "text search (embedding similarity)" do
+    test "search_videos_by_embedding/2 returns the most similar videos by dot-product" do
+      user = user_fixture()
+
+      {:ok, good} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "good",
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, ok} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "ok",
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, bad} =
+        Videos.create_video(%{
+          user_id: user.id,
+          caption: "bad",
+          storage_key: "#{System.unique_integer([:positive])}.mp4",
+          content_hash: :crypto.strong_rand_bytes(32)
+        })
+
+      {:ok, _} = Videos.upsert_video_embedding(good.id, "test", [1.0, 0.0])
+      {:ok, _} = Videos.upsert_video_embedding(ok.id, "test", [0.9, 0.1])
+      {:ok, _} = Videos.upsert_video_embedding(bad.id, "test", [-1.0, 0.0])
+
+      assert {:ok, items} =
+               Videos.search_videos_by_embedding([1.0, 0.0], version: "test", limit: 2)
+
+      assert [%{video: first, score: first_score}, %{video: second, score: second_score}] = items
+      assert first.id == good.id
+      assert second.id == ok.id
+      assert first_score > second_score
+    end
+
+    test "search_videos_by_embedding/2 returns :empty_vector for an empty query vector" do
+      assert {:error, :empty_vector} = Videos.search_videos_by_embedding([])
+    end
+  end
+
   describe "list_videos/1 (favorites metadata)" do
     test "includes favorites_count and favorited for the current user" do
       user1 = user_fixture()

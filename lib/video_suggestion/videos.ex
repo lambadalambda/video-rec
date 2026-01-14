@@ -276,4 +276,63 @@ defmodule VideoSuggestion.Videos do
       end
     end
   end
+
+  @spec search_videos_by_embedding(Vector.t(), keyword()) ::
+          {:ok, [%{video: Video.t(), score: float()}]} | {:error, :empty_vector}
+  def search_videos_by_embedding(query_vector, opts \\ []) when is_list(query_vector) do
+    limit = Keyword.get(opts, :limit, 20)
+    version = Keyword.get(opts, :version)
+    version_prefix = Keyword.get(opts, :version_prefix)
+
+    if query_vector == [] do
+      {:error, :empty_vector}
+    else
+      dim = length(query_vector)
+
+      query =
+        from(v in Video,
+          join: e in VideoEmbedding,
+          on: e.video_id == v.id,
+          where: fragment("COALESCE(array_length(?, 1), 0)", e.vector) == ^dim,
+          select: {v, e.vector}
+        )
+
+      query =
+        cond do
+          is_binary(version) and version != "" ->
+            from([v, e] in query, where: e.version == ^version)
+
+          is_binary(version_prefix) and version_prefix != "" ->
+            from([v, e] in query, where: like(e.version, ^"#{version_prefix}%"))
+
+          true ->
+            query
+        end
+
+      query
+      |> Repo.all()
+      |> Enum.reduce({:ok, []}, fn {video, vector}, {:ok, acc} ->
+        case Vector.dot(query_vector, vector) do
+          {:ok, score} ->
+            {:ok, [%{video: video, score: score} | acc]}
+
+          {:error, :dimension_mismatch} ->
+            {:ok, acc}
+
+          {:error, :empty_vector} ->
+            {:ok, acc}
+        end
+      end)
+      |> case do
+        {:ok, scored} ->
+          {:ok,
+           scored
+           |> Enum.sort_by(& &1.score, :desc)
+           |> Enum.take(limit)}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
 end
