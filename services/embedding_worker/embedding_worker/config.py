@@ -44,7 +44,7 @@ class Settings:
 def get_settings() -> Settings:
     uploads_dir = Path(os.environ.get("UPLOADS_DIR", "priv/static/uploads")).resolve()
     backend = os.environ.get("EMBEDDING_BACKEND", "deterministic")
-    dims = int(os.environ.get("EMBEDDING_DIMS", "64"))
+    dims = int(os.environ.get("EMBEDDING_DIMS", "1536"))
     qwen_model = os.environ.get("QWEN3_VL_MODEL", "Qwen/Qwen3-VL-Embedding-2B")
     qwen_device = os.environ.get("QWEN_DEVICE", "auto")
     qwen_max_length = int(os.environ.get("QWEN_MAX_LENGTH", "8192"))
