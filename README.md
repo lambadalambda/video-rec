@@ -49,6 +49,21 @@ mix videos.transcribe
 mix videos.embed_visual
 ```
 
+### Remote worker (no shared uploads)
+
+If the embedding worker runs on another machine (e.g. via Tailscale) and **does not have access to**
+`priv/static/uploads`, set:
+
+- `EMBEDDING_WORKER_BASE_URL` to the worker’s URL (e.g. `http://pc:9001`)
+- `EMBEDDING_WORKER_MEDIA_MODE=upload` so mix tasks upload sampled frames / extracted audio instead of `storage_key`
+
+Example:
+
+```sh
+EMBEDDING_WORKER_BASE_URL=http://pc:9001 EMBEDDING_WORKER_MEDIA_MODE=upload mix videos.embed_visual
+EMBEDDING_WORKER_BASE_URL=http://pc:9001 EMBEDDING_WORKER_MEDIA_MODE=upload mix videos.transcribe
+```
+
 ## Recommendation Core
 
 Pure, unit-tested modules (see `lib/video_suggestion/reco/`):

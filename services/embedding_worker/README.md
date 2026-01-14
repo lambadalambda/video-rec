@@ -95,10 +95,32 @@ If `qwen-vl-utils` falls back to the `torchvision` video reader, it will load th
 ## API
 
 - `POST /v1/transcribe/video` → `{storage_key}` → `{transcript}` (requires `requirements-whisper.txt`)
+- `POST /v1/transcribe/audio` → multipart `{audio}` → `{transcript}` (requires `requirements-whisper.txt`)
 - `POST /v1/embed/video` → `{storage_key, caption?, dims?, transcribe?}` → `{version, dims, embedding, transcript?}`
+- `POST /v1/embed/video_frames` → multipart `{frames[], caption?, dims?, transcript?}` → `{version, dims, embedding, transcript?}`
+- `POST /v1/embed/text` → `{text, dims?}` → `{version, dims, embedding}`
 
 ## Test
 
 ```sh
 pytest
+```
+
+## Docker (GPU)
+
+This repo ships a Dockerfile intended for running on an NVIDIA GPU machine (e.g. WSL2 + 4090).
+
+Build locally:
+
+```sh
+cd services/embedding_worker
+docker build -t embedding-worker .
+docker run --rm -p 9001:9001 --gpus all embedding-worker
+```
+
+Or run via `compose.yaml` (edit `EMBEDDING_WORKER_IMAGE` / env vars as needed):
+
+```sh
+cd services/embedding_worker
+EMBEDDING_WORKER_IMAGE=ghcr.io/OWNER/video-suggestion-embedding-worker:latest docker compose up -d
 ```

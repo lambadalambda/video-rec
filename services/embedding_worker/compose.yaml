@@ -1,0 +1,24 @@
+services:
+  embedding_worker:
+    image: ${EMBEDDING_WORKER_IMAGE:-ghcr.io/OWNER/video-suggestion-embedding-worker:latest}
+    ports:
+      - "9001:9001"
+    environment:
+      UPLOADS_DIR: /unused
+      EMBEDDING_BACKEND: qwen3_vl
+      QWEN3_VL_MODEL: Qwen/Qwen3-VL-Embedding-2B
+      EMBEDDING_DIMS: "512"
+      TRANSCRIBE_ENABLED: "1"
+      WHISPER_BACKEND: transformers
+      WHISPER_MODEL: distil-whisper/distil-large-v3
+      WHISPER_DEVICE: auto
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+      - torch_cache:/root/.cache/torch
+    restart: unless-stopped
+    gpus: all
+
+volumes:
+  hf_cache:
+  torch_cache:
+
